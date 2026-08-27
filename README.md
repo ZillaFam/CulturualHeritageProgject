@@ -2,6 +2,8 @@
 
 **A Family Heritage Project game — 7th Grade World History**
 
+### 🎮 Play it online: **https://zillafam.github.io/CulturualHeritageProgject/**
+
 It's New Year's Eve, and Nǎi Nai's red envelope is *glowing*. It pulls you into
 Heritage Village, where the old stories live — but the festivals' light is fading
 because their stories are being forgotten. Guided by Lóng, a little paper dragon,
