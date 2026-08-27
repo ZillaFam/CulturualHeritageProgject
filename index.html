@@ -1258,50 +1258,59 @@ function drawLong(hx, hy, t, flip=false, sc=1){
 }
 
 /* ---------- NIAN the beast ---------- */
+/* horizontal capsule: one solid mass, no bubble seams */
+function capO(x1, x2, y, r, c){
+  circle(x1, y, r, c); circle(x2, y, r, c);
+  R(Math.min(x1,x2), y-r, Math.abs(x2-x1), r*2+1, c);
+}
 function drawNian(x, y, t){
   const stomp = Math.round(Math.abs(Math.sin(t*3.2))*1.6);
   const by = y - stomp;
   ell(x+2, y-1, 29, 2.6, 'rgba(0,0,0,0.32)');
-  // tail
-  nblob(x-25, by-14, 3.6);
-  nblob(x-28, by-19, 3, false);
-  tri(x-28, by-25, x-32, by-17, x-25, by-20, INK);
-  tri(x-28, by-24, x-31, by-18, x-26, by-20, '#d43424');
-  // back leg
-  nblob(x-15, by-8, 6);
-  R(x-18, by-5, 6, 5, INK); R(x-17, by-4.4, 4, 4, '#2a6620');
-  R(x-18.6, by-1.4, 7, 1.8, INK);
-  R(x-18, by-1.2, 1.6, 1.4, '#ede0bc'); R(x-15.6, by-1.2, 1.6, 1.4, '#ede0bc'); R(x-13.4, by-1.2, 1.4, 1.4, '#ede0bc');
-  // body: muscle cluster
-  nblob(x-16, by-17, 8.4);
-  nblob(x-6, by-20, 9.6);
-  nblob(x+3, by-18, 9);
-  nblob(x-6, by-12, 8, false);
-  nblob(x+4, by-10.5, 7.4, false);
-  // spiky ridge along the back
+  // tail (union pass: outlines, then fills)
+  circle(x-26, by-14, 4.5, INK); circle(x-29, by-19, 3.9, INK);
+  circle(x-26, by-14, 3.6, '#2a6620'); circle(x-29, by-19, 3, '#48962c');
+  tri(x-29, by-26, x-33, by-18, x-26, by-21, INK);
+  tri(x-29, by-25, x-32, by-19, x-27, by-21, '#d43424');
+  // torso: ONE capsule mass with shading bands
+  capO(x-15, x+7, by-16, 10.7, INK);
+  capO(x-15, x+7, by-16, 9.8, '#48962c');
+  capO(x-14, x+6, by-19.5, 4.8, '#7cc93e');
+  capO(x-14, x+6, by-11, 4.6, '#2a6620');
+  capO(x-13, x+5, by-9, 2.6, '#143c16');
+  // haunch: rear thigh reads as a limb, so it keeps its outline
+  circle(x-16, by-12, 8.4, INK); circle(x-16, by-12, 7.5, '#48962c');
+  circle(x-18, by-14.5, 3.6, '#7cc93e');
+  circle(x-14, by-8.5, 3.4, '#2a6620');
+  // back spikes riding the top of the mass
   for (let i=0;i<6;i++){
-    const sx = x-22+i*5.2, sh = 6 + (i%3)*2;
-    tri(sx-2.6, by-24, sx, by-24-sh, sx+2.6, by-24, INK);
-    tri(sx-1.8, by-24.4, sx, by-24-sh+1, sx+1.8, by-24.4, i%2 ? '#2a6620' : '#48962c');
-    tri(sx-1.2, by-24.4, sx-0.4, by-24-sh+2.2, sx+0.2, by-24.4, '#7cc93e');
+    const sx = x-19+i*5, sh = 6+(i%3)*2, syt = by-24;
+    tri(sx-2.6, syt, sx, syt-sh, sx+2.6, syt, INK);
+    tri(sx-1.7, syt-0.4, sx, syt-sh+1, sx+1.7, syt-0.4, i%2 ? '#2a6620' : '#48962c');
+    R(sx-1, syt-sh+2, 1, Math.max(1, sh-3), '#7cc93e');
   }
   // belly shag
-  for (let i=0;i<6;i++){
-    const sx = x-18+i*5;
-    tri(sx-2.2, by-7, sx, by-2.6+(i%2)*1.4, sx+2.2, by-7, INK);
-    tri(sx-1.5, by-7, sx, by-3.6+(i%2)*1.4, sx+1.5, by-7, '#143c16');
+  for (let i=0;i<5;i++){
+    const sx = x-14+i*5;
+    tri(sx-2.2, by-6.8, sx, by-2.6+(i%2), sx+2.2, by-6.8, INK);
+    tri(sx-1.4, by-6.8, sx, by-3.6+(i%2), sx+1.4, by-6.8, '#143c16');
   }
-  // front legs
-  nblob(x+8, by-9, 5.6);
-  R(x+4.6, by-6, 6.4, 6, INK); R(x+5.4, by-5.4, 4.6, 5, '#2a6620'); R(x+5.8, by-5, 2, 3, '#48962c');
-  R(x+4, by-1.6, 8, 2, INK);
-  R(x+4.8, by-1.4, 1.8, 1.6, '#ede0bc'); R(x+7.2, by-1.4, 1.8, 1.6, '#ede0bc'); R(x+9.6, by-1.4, 1.6, 1.6, '#ede0bc');
-  nblob(x+16, by-10, 5.2);
-  R(x+13.6, by-6.6, 6, 6.4, INK); R(x+14.4, by-6, 4.2, 5.4, '#2a6620'); R(x+14.8, by-5.6, 1.8, 3, '#48962c');
-  R(x+13, by-1.6, 8, 2, INK);
-  R(x+13.8, by-1.4, 1.8, 1.6, '#ede0bc'); R(x+16.2, by-1.4, 1.8, 1.6, '#ede0bc'); R(x+18.6, by-1.4, 1.6, 1.6, '#ede0bc');
+  // back leg under the haunch
+  R(x-20, by-7, 7.5, 6, INK); R(x-19, by-6.4, 5.6, 5.4, '#2a6620'); R(x-18.4, by-6, 2, 3.4, '#48962c');
+  R(x-20.6, by-1.8, 9, 2.2, INK);
+  R(x-20, by-1.6, 2, 1.8, '#ede0bc'); R(x-17.4, by-1.6, 2, 1.8, '#ede0bc'); R(x-14.8, by-1.6, 1.6, 1.8, '#ede0bc');
+  // front legs, planted
+  for (const lx of [x+1, x+10]){
+    R(lx, by-8, 7, 7.2, INK);
+    R(lx+0.8, by-7.4, 5.4, 6.4, '#2a6620');
+    R(lx+1.2, by-7, 2, 4.6, '#48962c');
+    R(lx-0.6, by-1.8, 8.6, 2.2, INK);
+    R(lx+0.2, by-1.6, 2, 1.8, '#ede0bc'); R(lx+2.8, by-1.6, 2, 1.8, '#ede0bc'); R(lx+5.4, by-1.6, 1.8, 1.8, '#ede0bc');
+  }
+  // chest fluff under the chin
+  tri(x+4, by-23, x+8, by-30, x+12, by-23, '#2a6620');
 
-  /* ----- BIG head, front-right ----- */
+  /* ----- BIG head ----- */
   const cxx = x+14, cyy = by-31;
   // horns: curved, gold, two-tone
   for (const s of [-1, 1]){
@@ -1316,20 +1325,20 @@ function drawNian(x, y, t){
     tri(mx-2, cyy-8, mx, cyy-14-(i%2)*2, mx+2, cyy-8, INK);
     tri(mx-1.3, cyy-8.4, mx, cyy-13-(i%2)*2, mx+1.3, cyy-8.4, i%2 ? '#d43424' : '#8a1c14');
   }
-  // skull + cheeks
-  nblob(cxx, cyy, 10.4);
-  nblob(cxx-8.6, cyy+3.4, 4.6, false);
-  nblob(cxx+8.6, cyy+3.4, 4.6, false);
   // ears
   tri(cxx-12, cyy-6, cxx-15.5, cyy-9.5, cxx-9.5, cyy-8.5, INK);
   tri(cxx-11.6, cyy-6.4, cxx-14.2, cyy-8.8, cxx-10, cyy-8, '#2a6620');
   tri(cxx+12, cyy-6, cxx+15.5, cyy-9.5, cxx+9.5, cyy-8.5, INK);
   tri(cxx+11.6, cyy-6.4, cxx+14.2, cyy-8.8, cxx+10, cyy-8, '#2a6620');
+  // skull + cheeks as ONE union silhouette (outline pass, then fill pass)
+  circle(cxx, cyy, 11.2, INK); circle(cxx-8.6, cyy+3.6, 5.8, INK); circle(cxx+8.6, cyy+3.6, 5.8, INK);
+  circle(cxx, cyy, 10.3, '#48962c'); circle(cxx-8.6, cyy+3.6, 4.9, '#48962c'); circle(cxx+8.6, cyy+3.6, 4.9, '#48962c');
+  circle(cxx-3.5, cyy-5.5, 4.4, '#7cc93e');
   // heavy brow ledge
   R(cxx-9.6, cyy-4.6, 19.2, 3.2, INK);
   R(cxx-9, cyy-4.2, 18, 2, '#143c16');
   R(cxx-9, cyy-4.2, 18, 0.8, '#48962c');
-  // furious glowing eyes under the brow
+  // furious glowing eyes
   R(cxx-7.6, cyy-1.2, 5, 2.8, INK); R(cxx-7, cyy-0.8, 3.8, 2, '#ff3820'); R(cxx-6.6, cyy-0.6, 1.2, 0.8, '#ffd0c0');
   R(cxx+2.6, cyy-1.2, 5, 2.8, INK); R(cxx+3.2, cyy-0.8, 3.8, 2, '#ff3820'); R(cxx+3.6, cyy-0.6, 1.2, 0.8, '#ffd0c0');
   glow(cxx-5, cyy, 6, '#ff5030', 0.5); glow(cxx+5, cyy, 6, '#ff5030', 0.5);
@@ -1359,7 +1368,7 @@ function drawRoof(x, y, w){
   R(x-8, y-1, w+16, 6.6, INK);
   R(x-7, y, w+14, 5, '#4a4658');
   R(x-7, y, w+14, 1.2, '#6f6a8c');
-  for (let i=0;i<w+14;i+=3.4) R(x-7+i, y+1.6, 1, 3.4, '#3a3750');
+  for (let i=0;i<w+13;i+=4){ R(x-7+i, y+1.6, 1, 1.8, '#3a3750'); R(x-5+i, y+3.4, 1, 1.6, '#3a3750'); }
   R(x-9.5, y-3.4, 4, 5, INK); R(x-9, y-2.8, 3, 3.6, '#4a4658'); R(x-9, y-2.8, 3, 1, '#6f6a8c');
   R(x+w+5.5, y-3.4, 4, 5, INK); R(x+w+6, y-2.8, 3, 3.6, '#4a4658'); R(x+w+6, y-2.8, 3, 1, '#6f6a8c');
   circle(x-8, y-3.4, 1.3, '#c07c1c'); circle(x-8, y-3.6, 1, '#f2b632');
@@ -1390,6 +1399,9 @@ function drawHouse(h, decor){
   R(x-1.4, y-1, w+2.8, ht+2, INK);
   R(x, y, w, ht, '#efe0c2');
   R(x, y, w, 1.4, '#d8c8a4');
+  R(x+w*0.18, y+ht*0.42, 8, 5, '#e6d6b4');
+  R(x+w*0.62, y+ht*0.3, 6, 4, '#e9dcc0');
+  R(x+w*0.4, y+ht*0.6, 5, 3, '#e6d6b4');
   // stone base
   R(x, y+ht-3.6, w, 3.6, '#b9ab90');
   for (let i=4;i<w;i+=9) R(x+i, y+ht-3.6, 1, 3.6, '#a2947a');
@@ -1453,12 +1465,18 @@ function drawTree(x, y, kind, chp){
     }
     if (chp===1){ R(x-6, y-15.6, 8, 1.6, '#eef2f4'); R(x-4, y-20.4, 6, 1.6, '#eef2f4'); R(x-2, y-24.6, 4, 1.4, '#eef2f4'); }
   } else {
-    circle(x-4, y-13, 6, INK); circle(x+4, y-13, 6, INK); circle(x, y-18.5, 7, INK);
-    circle(x-4, y-13, 5.2, cols[1]); circle(x+4, y-13, 5.2, cols[0]);
-    circle(x, y-18.5, 6.2, cols[1]);
-    circle(x-2, y-20.5, 3, cols[2]); circle(x-5.5, y-15, 2.4, cols[2]);
-    circle(x+3, y-11, 3.4, cols[0]);
-    if (chp===3){ R(x-7, y-9.6, 2.4, 2, cols[2]); R(x+5, y-7.6, 2.4, 2, cols[1]); }
+    // canopy: union silhouette (all outlines first, then all fills — no inner seams)
+    circle(x-4, y-13, 6, INK); circle(x+4, y-13, 6, INK); circle(x, y-18.5, 7, INK); circle(x, y-12, 5.6, INK);
+    circle(x-4, y-13, 5.2, cols[1]); circle(x+4, y-13, 5.2, cols[1]);
+    circle(x, y-18.5, 6.2, cols[1]); circle(x, y-12, 4.8, cols[1]);
+    // shading inside the mass
+    circle(x+3.6, y-11.4, 3.8, cols[0]); circle(x+5.6, y-14, 2.6, cols[0]);
+    circle(x-2, y-20, 3.4, cols[2]); circle(x-5.4, y-15.4, 2.6, cols[2]);
+    // leaf specks
+    R(x-1, y-16, 1, 1, cols[2]); R(x+3, y-18, 1, 1, cols[2]);
+    R(x-5, y-11, 1, 1, cols[0]); R(x+1, y-10.6, 1, 1, cols[0]); R(x-2, y-13.6, 1, 1, cols[0]);
+    if (chp===3){ R(x-7, y-9.6, 2, 2, cols[2]); R(x+5, y-7.6, 2, 2, cols[1]); R(x-1, y-6.6, 2, 1, cols[2]); }
+    if (chp===1){ R(x-4, y-21.6, 6, 2, '#f2f4f0'); R(x+2, y-16.6, 4, 1.6, '#f2f4f0'); R(x-7, y-14.6, 3, 1.4, '#e6ece6'); }
   }
 }
 function drawWell(x, y){
@@ -1813,13 +1831,60 @@ function toastRender(dt){
 
 /* ---------- tiles ---------- */
 const PALS = {
-  1:{ ground:'#cfc4a4', speck:'#bdb18e', snow:'#eef0ee', path:'#c0a276', pstone:'#a8a49a',
-      water1:'#4a7ab2', water2:'#5c8cc4', hill:'#c2ba92', reed:'#b8ae86' },
-  2:{ ground:'#6fae4e', speck:'#5f9c42', snow:null,      path:'#c8a878', pstone:'#a8a49a',
-      water1:'#3a7ab2', water2:'#4e90c8', hill:'#83bc5c', reed:'#5f9c42' },
-  3:{ ground:'#b08a52', speck:'#9c7844', snow:null,      path:'#c09c6a', pstone:'#a89a88',
-      water1:'#2a4a7a', water2:'#3a5e94', hill:'#bc9660', reed:'#9c7844' },
+  1:{ grass:'#c2cab0', blade1:'#a6b892', blade2:'#8ba078', snow:'#f2f4f0', snowsh:'#d7ded4',
+      water1:'#4a7ab2', water2:'#5c8cc4', hill:'#b8c2a2', speck:null, leaf:null, flower:null },
+  2:{ grass:'#5da442', blade1:'#82c65c', blade2:'#48862e', snow:null,
+      water1:'#3a7ab2', water2:'#4e90c8', hill:'#71b64e', leaf:null, flower:'#f6e8f2' },
+  3:{ grass:'#ac9854', blade1:'#cab266', blade2:'#8b7840', snow:null,
+      water1:'#2a4a7a', water2:'#3a5e94', hill:'#b4a05e', leaf:'#c8763c', flower:null },
 };
+/* cobblestone ramps: [light-top, stone A, stone B, stone C, grout] */
+const COB_P = ['#dcc09a','#c9ab80','#b99872','#a68760','#7c624a'];
+const COB_S = ['#c6c2b8','#b2aea4','#a29c90','#918a7e','#645e55'];
+function cobbleTile(sx, sy, tx, ty, ramp){
+  R(sx, sy, TILE, TILE, ramp[4]);
+  for (const qy of [0, 8]){
+    for (const qx of [0, 8]){
+      const hh = thash(tx*2 + qx/8, ty*2 + qy/8 + 9);
+      const w = 6 + (hh > 0.5 ? 1 : 0);
+      const stone = ramp[1 + Math.floor(hh*3)%3];
+      R(sx+qx+1, sy+qy+1, w, 6, stone);
+      R(sx+qx+1, sy+qy+1, w, 1, ramp[0]);
+      R(sx+qx+1, sy+qy+6, w, 1, ramp[4]);
+    }
+  }
+}
+function grassTile(sx, sy, tx, ty, pal, base){
+  R(sx, sy, TILE, TILE, base);
+  for (let k=0;k<4;k++){
+    const h1 = thash(tx*7 + k*13, ty*11 + k*17);
+    if (h1 > 0.6) continue;
+    const bx2 = 1 + Math.floor(h1*97)%14, by2 = 1 + Math.floor(h1*61)%13;
+    R(sx+bx2, sy+by2, 1, 2, k%2 ? pal.blade1 : pal.blade2);
+  }
+  const h = thash(tx, ty);
+  if (h < 0.13){          // grass tuft
+    const ox = 2 + Math.floor(h*80)%10, oy = 3 + Math.floor(h*50)%9;
+    R(sx+ox, sy+oy, 1, 3, pal.blade2);
+    R(sx+ox-1, sy+oy+1, 1, 2, pal.blade1);
+    R(sx+ox+1, sy+oy+1, 1, 2, pal.blade1);
+  }
+  if (pal.snow && h > 0.55){   // winter snow patches
+    const ox = Math.floor(h*70)%9, oy = Math.floor(h*45)%9;
+    R(sx+ox, sy+oy+1, 6, 2, pal.snow);
+    R(sx+ox+1, sy+oy, 4, 1, pal.snow);
+    R(sx+ox+1, sy+oy+3, 4, 1, pal.snowsh);
+  }
+  if (pal.flower && h > 0.965){  // spring blossoms
+    const ox = 3 + Math.floor(h*90)%10, oy = 3 + Math.floor(h*57)%10;
+    R(sx+ox-1, sy+oy, 3, 1, pal.flower); R(sx+ox, sy+oy-1, 1, 3, pal.flower);
+    R(sx+ox, sy+oy, 1, 1, '#f2b632');
+  }
+  if (pal.leaf && h > 0.9){      // fallen autumn leaves
+    const ox = 2 + Math.floor(h*90)%11, oy = 2 + Math.floor(h*57)%11;
+    R(sx+ox, sy+oy, 2, 1, pal.leaf); R(sx+ox+1, sy+oy+1, 1, 1, '#8a4f22');
+  }
+}
 function drawTiles(cam, camY){
   const pal = PALS[clamp(G.ch,1,3)] || PALS[1];
   const x0 = Math.floor(cam/TILE), x1 = Math.min(MAPW-1, Math.ceil((cam+LW)/TILE));
@@ -1830,20 +1895,16 @@ function drawTiles(cam, camY){
       const sx = tx*TILE-cam, sy = ty*TILE-camY;
       const h = thash(tx,ty);
       if (c==='G' || c==='R'){
-        R(sx,sy,TILE,TILE, pal.ground);
-        if (h<0.35) R(sx+((h*40)%12), sy+((h*90)%12), 2, 2, pal.speck);
-        if (G.ch===1 && h>0.62) R(sx+((h*70)%10), sy+((h*50)%10), 4, 3, pal.snow);
+        grassTile(sx, sy, tx, ty, pal, pal.grass);
         if (c==='R'){
-          R(sx+3, sy+6, 1.4, 10, '#7a9a4e'); R(sx+9, sy+4, 1.4, 12, '#8aa85a');
-          R(sx+13, sy+8, 1.4, 8, '#7a9a4e');
+          R(sx+3, sy+6, 1, 10, '#7a9a4e'); R(sx+4, sy+5, 1, 2, '#8aa85a');
+          R(sx+9, sy+4, 1, 12, '#8aa85a'); R(sx+10, sy+3, 1, 2, '#9ab868');
+          R(sx+13, sy+8, 1, 8, '#7a9a4e');
         }
       } else if (c==='P'){
-        R(sx,sy,TILE,TILE, pal.path);
-        if (h<0.3) R(sx+((h*40)%12), sy+((h*90)%12), 2.4, 2, 'rgba(0,0,0,0.08)');
+        cobbleTile(sx, sy, tx, ty, COB_P);
       } else if (c==='S'){
-        R(sx,sy,TILE,TILE, pal.pstone);
-        R(sx,sy,TILE,1,'rgba(0,0,0,0.12)'); R(sx,sy,1,TILE,'rgba(0,0,0,0.12)');
-        R(sx+8,sy+8,1,8,'rgba(0,0,0,0.08)'); R(sx+8,sy+8,8,1,'rgba(0,0,0,0.08)');
+        cobbleTile(sx, sy, tx, ty, COB_S);
       } else if (c==='W'){
         R(sx,sy,TILE,TILE, pal.water1);
         const wv = Math.sin(G.time*1.4 + tx*0.9 + ty*1.7);
@@ -1853,9 +1914,9 @@ function drawTiles(cam, camY){
         R(sx,sy,TILE,TILE, '#8a6844');
         R(sx,sy,TILE,1.4,'#6a4c30'); R(sx,sy+8,TILE,1.4,'#6a4c30');
         R(sx+((tx%2)*8), sy, 1.4, TILE, '#6a4c30');
+        R(sx+2, sy+2, 5, 1, '#a07c50'); R(sx+9, sy+10, 5, 1, '#a07c50');
       } else if (c==='H'){
-        R(sx,sy,TILE,TILE, pal.hill);
-        if (h<0.3) R(sx+((h*40)%12), sy+((h*90)%12), 2, 2, pal.speck);
+        grassTile(sx, sy, tx, ty, pal, pal.hill);
         if (map[ty][tx-1] && map[ty][tx-1]!=='H') R(sx,sy,2,TILE,'rgba(90,70,40,0.35)');
         if (map[ty+1] && map[ty+1][tx]!=='H') R(sx,sy+TILE-2,TILE,2,'rgba(90,70,40,0.35)');
       }
