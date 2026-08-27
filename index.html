@@ -106,7 +106,7 @@ const G = {
 function saveGame(){
   try{
     localStorage.setItem('festivalquest_save', JSON.stringify({
-      name:G.name, ch:G.ch, step:G.step, scrolls:G.scrolls, muted:G.muted
+      name:G.name, ch:G.ch, step:G.step, scrolls:G.scrolls, muted:G.muted, look:G.look||null
     }));
   }catch(e){}
 }
@@ -750,6 +750,336 @@ function drawPortrait(x, y, o){
   if (o.blush){ R(cxx-6, cyy+1, 2, 1.6, '#e8927c'); R(cxx+4, cyy+1, 2, 1.6, '#e8927c'); }
 }
 /* ============================================================
+   CHIBI SPRITES — big-head pixel characters with outlines
+   Maps are 16 wide. Chars: . transparent | o outline
+   H hair  h hair shine | S skin  s skin shadow
+   W eye white  E pupil | T top  t top shadow
+   L legs  F shoes | G gold  R ribbon/band  Y straw  D beard  P pink
+   ============================================================ */
+
+const PAD = '................';
+const HEAD_DOWN = [
+'....oooooooo....',
+'..ooHHHHHHHHoo..',
+'.oHhHHHHHHHHHHo.',
+'.oHHHHHHHHHHHHo.',
+'oHHHHHHHHHHHHHHo',
+'oHHSSSSSSSSSSHHo',
+'oHSSSSSSSSSSSSHo',
+'oSSWWSSSSSSWWSSo',
+'oSSEWSSSSSSEWSSo',
+'oSSSSSSSSSSSSSSo',
+'.oSSSSSssSSSSSo.',
+'..ooSSSSSSSSoo..',
+];
+const HEAD_UP = [
+'....oooooooo....',
+'..ooHHHHHHHHoo..',
+'.oHHhHHHHHHHHHo.',
+'.oHHHHHHHHHHHHo.',
+'oHHHHHHHHHHHHHHo',
+'oHHHHHHHHHHHHHHo',
+'oHHHHHHHHHHHHHHo',
+'oHhHHHHHHHHHHhHo',
+'oHHHHHHHHHHHHHHo',
+'oSHHHHHHHHHHHHSo',
+'.oSHHHHHHHHHHSo.',
+'..ooHHHHHHHHoo..',
+];
+const HEAD_SIDE = [   // facing left
+'....oooooooo....',
+'..ooHHHHHHHHoo..',
+'.oHHhHHHHHHHHHo.',
+'.oHHHHHHHHHHHHo.',
+'oHHHHHHHHHHHHHHo',
+'oSSSSSSHHHHHHHHo',
+'oSSSSSSSHHHHHHHo',
+'oSWWSSSSHHHHHHHo',
+'oSEWSSSSsHHHHHHo',
+'osSSSSSSSHHHHHo.',
+'.oSSSSSSSSHHHo..',
+'..ooSSSSSSooo...',
+];
+const BODY_DOWN_0 = [
+'..oTTTTTTTTTTo..',
+'.oSTTTTTTTTTTSo.',
+'.oSTtTTTTTTtTSo.',
+'..oTTTTTTTTTTo..',
+'..ottTTTTTTtto..',
+'...oLLLooLLLo...',
+'...oFFFooFFFo...',
+];
+const BODY_DOWN_1 = [
+'..oTTTTTTTTTTo..',
+'.oSTTTTTTTTTTSo.',
+'.oSTtTTTTTTtTSo.',
+'..oTTTTTTTTTTo..',
+'..ottTTTTTTtto..',
+'...oFFFooLLLo...',
+'........oFFFo...',
+];
+const BODY_SIDE_0 = [
+'...oTTTTTTTo....',
+'..oTTTTTTTTTo...',
+'..oTTtTTTTsTo...',
+'...oTTTTTTTo....',
+'...ottTTTtto....',
+'....oLLLLo......',
+'....oFFFFo......',
+];
+const BODY_SIDE_1 = [
+'...oTTTTTTTo....',
+'..oTTTTTTTTTo...',
+'..oTTtTTTTsTo...',
+'...oTTTTTTTo....',
+'...ottTTTtto....',
+'...oLLooLLLo....',
+'..oFFo..oFFFo...',
+];
+const ROBE_DOWN = [
+'..oTTTTTTTTTTo..',
+'.oSTTTTTTTTTTSo.',
+'.oSTtTTTTTTtTSo.',
+'..oTTTTTTTTTTo..',
+'..oTTtTTTTtTTo..',
+'..oTTTTTTTTTTo..',
+'...oooooooooo...',
+];
+const ROBE_SIDE = [
+'...oTTTTTTTo....',
+'..oTTTTTTTTTo...',
+'..oTTtTTTTsTo...',
+'...oTTTTTTTo....',
+'...oTTTTTTTo....',
+'...oTTTTTTTo....',
+'....ooooooo.....',
+];
+
+/* overlays: 20 rows x 16, mostly transparent.
+   A spec is either one map (all directions) or {down, up, side} with null = skip. */
+function ovEmpty(){ return Array(20).fill(PAD); }
+function makeOverlay(rows){ const o = ovEmpty(); for (const [i,s] of rows) o[i]=s; return o; }
+const OV_BUNS = makeOverlay([
+  [3,'oo............oo'],
+  [4,'oHo..........oHo'],
+  [5,'oHHo........oHHo'],
+  [6,'.oo..........oo.'],
+]);
+const OV_BUN = makeOverlay([
+  [0,'......oHHo......'],
+  [1,'.....oHHHHo.....'],
+]);
+const OV_HAT = makeOverlay([
+  [0,'....oYYYYYYo....'],
+  [1,'...oYYYYYYYYo...'],
+  [2,'.oYYYYYYYYYYYYo.'],
+  [3,'oYYYYYYYYYYYYYYo'],
+]);
+const OV_BAND = makeOverlay([
+  [5,'.RRRRRRRRRRRRRR.'],
+]);
+const OV_BEARD_DOWN = makeOverlay([
+  [11,'..oDDDDDDDDDDo..'],
+  [12,'...DDDDDDDDDD...'],
+  [13,'....DDDDDDDD....'],
+]);
+const OV_BEARD_SIDE = makeOverlay([
+  [10,'.oDDDDDDD.......'],
+  [11,'..DDDDDD........'],
+  [12,'...DDDD.........'],
+]);
+const OV_GLASSES_DOWN = makeOverlay([
+  [7,'..GGGG....GGGG..'],
+  [8,'..G..GGGGGG..G..'],
+  [10,'..GGGG....GGGG..'],
+]);
+const OV_GLASSES_SIDE = makeOverlay([
+  [6,'.GGGG...........'],
+  [7,'.G..GGGG........'],
+  [9,'.GGGG...........'],
+]);
+const OV_BLUSH = makeOverlay([
+  [10,'..PP........PP..'],
+]);
+const OV_LONG = {
+  down: makeOverlay([
+    [13,'.oHo........oHo.'],
+    [14,'.oHHo......oHHo.'],
+    [15,'.oHHo......oHHo.'],
+    [16,'..oo........oo..'],
+  ]),
+  up: makeOverlay([
+    [13,'..oHHHHHHHHHHo..'],
+    [14,'..oHHHHHHHHHHo..'],
+    [15,'...oHHHHHHHHo...'],
+    [16,'....oooooooo....'],
+  ]),
+  side: makeOverlay([
+    [12,'.........oHHo...'],
+    [13,'.........oHHo...'],
+    [14,'.........oHHo...'],
+    [15,'..........oo....'],
+  ]),
+};
+const OV_PONY = {
+  down: makeOverlay([
+    [0,'.......oHHo.....'],
+    [1,'.......oHHo.....'],
+  ]),
+  up: makeOverlay([
+    [12,'......oHHo......'],
+    [13,'......oHHo......'],
+    [14,'.......oHo......'],
+    [15,'........o.......'],
+  ]),
+  side: makeOverlay([
+    [3,'..............oH'],
+    [4,'.............oHH'],
+    [5,'.............oHH'],
+    [6,'..............oH'],
+  ]),
+};
+const OV_BEARD = { down:OV_BEARD_DOWN, up:null, side:OV_BEARD_SIDE };
+const OV_GLASSES = { down:OV_GLASSES_DOWN, up:null, side:OV_GLASSES_SIDE };
+function ovFor(spec, dir){
+  if (!spec) return null;
+  if (Array.isArray(spec)) return spec;
+  const d = (dir==='up') ? 'up' : (dir==='down') ? 'down' : 'side';
+  return spec[d] || null;
+}
+
+/* shade helper: darken/lighten a hex color */
+function shade(hex, f){
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n>>16)&255, g = (n>>8)&255, b = n&255;
+  r = clamp(Math.round(r*f), 0, 255); g = clamp(Math.round(g*f), 0, 255); b = clamp(Math.round(b*f), 0, 255);
+  return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+}
+
+function chibiPalette(look){
+  const skin = look.skin||'#f2c896', hair = look.hair||'#241a1e',
+        top  = look.top ||'#e03c28', legs = look.pants||'#3a4a8a';
+  return {
+    o:'#2b1a26',
+    H:hair, h:shade(hair,1.6),
+    S:skin, s:shade(skin,0.82),
+    W:'#ffffff', E:'#241a20',
+    T:top, t:shade(top,0.72),
+    L:legs, F:shade(legs,0.55),
+    G:'#e8b028', R:'#d43424', Y:'#d8b869', D:'#ece8e0', P:'#f2a08c',
+  };
+}
+function composeRows(dir, frame, robe){
+  const head = dir==='up'? HEAD_UP : dir==='down'? HEAD_DOWN : HEAD_SIDE;
+  let body;
+  if (robe) body = (dir==='up'||dir==='down') ? ROBE_DOWN : ROBE_SIDE;
+  else if (dir==='up'||dir==='down') body = frame===1 ? BODY_DOWN_1 : BODY_DOWN_0;
+  else body = frame===1 ? BODY_SIDE_1 : BODY_SIDE_0;
+  return [PAD, ...head, ...body];
+}
+function paintRows(ctx2, rows, pal){
+  for (let y=0;y<rows.length;y++){
+    const row = rows[y];
+    if (row.length !== 16) { console.error('BAD SPRITE ROW len '+row.length+': "'+row+'"'); }
+    for (let x=0;x<row.length;x++){
+      const ch = row[x];
+      if (ch==='.') continue;
+      const c = pal[ch];
+      if (!c){ console.error('BAD SPRITE CHAR "'+ch+'" in "'+row+'"'); continue; }
+      ctx2.fillStyle = c;
+      ctx2.fillRect(x*P, y*P, P, P);
+    }
+  }
+}
+const chibiCache = {};
+function chibiSprite(look, dir, frame){
+  const key = [look.skin,look.hair,look.top,look.pants,look.hairstyle||'',look.elder?1:0,look.buns?1:0,
+               look.bun?1:0,look.hat?1:0,look.beard?1:0,look.glasses?1:0,look.blush?1:0,look.band?1:0,
+               dir,frame].join('|');
+  if (chibiCache[key]) return chibiCache[key];
+  const mirror = dir==='right';
+  const d = mirror ? 'left' : dir;
+  const c = document.createElement('canvas');
+  c.width = 16*P; c.height = 20*P;
+  const ctx2 = c.getContext('2d');
+  const pal = chibiPalette(look);
+  paintRows(ctx2, composeRows(d, frame, !!look.elder), pal);
+  const applyOv = spec => { const m = ovFor(spec, d); if (m) paintRows(ctx2, m, pal); };
+  if (look.hairstyle==='long') applyOv(OV_LONG);
+  if (look.hairstyle==='pony') applyOv(OV_PONY);
+  if (look.buns || look.hairstyle==='buns') applyOv(OV_BUNS);
+  if (look.bun) applyOv(OV_BUN);
+  if (look.hat) applyOv(OV_HAT);
+  if (look.band) applyOv(OV_BAND);
+  if (look.beard) applyOv(OV_BEARD);
+  if (look.glasses) applyOv(OV_GLASSES);
+  if (look.blush || look.buns) applyOv(OV_BLUSH);
+  if (mirror){
+    const m = document.createElement('canvas');
+    m.width = c.width; m.height = c.height;
+    const mc = m.getContext('2d');
+    mc.translate(c.width, 0); mc.scale(-1,1); mc.drawImage(c, 0, 0);
+    chibiCache[key] = m; return m;
+  }
+  chibiCache[key] = c;
+  return c;
+}
+
+/* replaces the old rectangle people */
+function drawPerson(x, y, o, t=0){
+  x = Math.round(x); y = Math.round(y);
+  const dir = o.dir || 'down';
+  let frame = 0, bob = 0;
+  if (o.walk){
+    const ph = Math.floor(t*8)%4;
+    if (dir==='left'||dir==='right'){ frame = (ph%2===0)?1:0; }
+    else { frame = ph===1?1: ph===3?2:0; }
+    bob = (ph%2===1)?-1:0;
+  }
+  cx.fillStyle='rgba(20,8,16,0.25)';
+  cx.fillRect((x-5)*P,(y-2)*P,10*P,3*P);
+  if (frame===2){   // mirrored step for down/up
+    const spr = chibiSprite(o, dir, 1);
+    cx.save();
+    cx.translate(x*P, 0); cx.scale(-1,1);
+    cx.drawImage(spr, -8*P, (y-20+bob)*P);
+    cx.restore();
+    return;
+  }
+  const spr = chibiSprite(o, dir, frame);
+  cx.drawImage(spr, (x-8)*P, (y-20+bob)*P);
+}
+
+/* portrait = the chibi head, larger, in the dialogue box */
+function drawPortrait(x, y, o){
+  box(x, y, 24, 24, {border:'#c8a860'});
+  if (o.dragon){
+    const cxx=x+12, cyy=y+13;
+    R(cxx-9, cyy-6, 18, 12, '#f2b632');
+    R(cxx+3, cyy-2, 7, 6, '#f8e0a0');
+    R(cxx-9, cyy-9, 3, 4, '#e03c28'); R(cxx+6, cyy-9, 3, 4, '#e03c28');
+    R(cxx-4, cyy-8, 8, 3, '#e03c28');
+    R(cxx-3, cyy-3, 3, 3, '#241a14');
+    R(cxx+8, cyy+2, 4, 1, '#e03c28');
+    return;
+  }
+  if (o.nian){
+    const cxx=x+12, cyy=y+13;
+    R(cxx-9, cyy-7, 18, 14, '#1e4a44');
+    R(cxx-7, cyy-10, 3, 4, '#f2b632'); R(cxx+4, cyy-10, 3, 4, '#f2b632');
+    R(cxx-5, cyy-4, 4, 2, '#ff3820'); R(cxx+1, cyy-4, 4, 2, '#ff3820');
+    R(cxx-4, cyy+2, 8, 2, '#4a1418');
+    R(cxx-4, cyy+2, 2, 2, '#f8f4ec'); R(cxx+2, cyy+2, 2, 2, '#f8f4ec');
+    return;
+  }
+  const spr = chibiSprite(o, 'down', 0);
+  const sh = 17*P;
+  cx.drawImage(spr, 0, 0, 16*P, sh, (x+4)*P, (y+5)*P, 16*P, sh);
+}
+
+/* the player's chosen look (from the character creator) */
+function playerLook(){ return G.look || PLAYER_LOOK; }
+/* ============================================================
    DATA — facts, sources, map, NPCs, quizzes
    All festival facts checked against the sources listed below.
    ============================================================ */
@@ -883,7 +1213,7 @@ const NPCS = {
           pos:{1:[700,108,'down'], 2:[700,108,'down'], 3:[700,108,'down']} },
 };
 const PLAYER_LOOK = { skin:'#eac086', hair:'#181418', top:'#e8b028', pants:'#3a4a8a' };
-const NAINAI_LOOK = { skin:'#dcb27c', hair:'#e8e4dc', top:'#7a3a8a', pants:'#4a3a45', elder:true, bun:true };
+const NAINAI_LOOK = { skin:'#e8c092', hair:'#e8e4dc', top:'#7a3a8a', pants:'#4a3a45', elder:true, bun:true, glasses:true };
 const MA_LOOK     = { skin:'#eac086', hair:'#2a2024', top:'#c05878', pants:'#3a3a55', bun:true };
 const BA_LOOK     = { skin:'#d8a878', hair:'#181418', top:'#3a6a5a', pants:'#2a2a3a' };
 const LONG_PORTRAIT = { dragon:true };
@@ -1225,7 +1555,7 @@ const world = {
     }
     // player
     items.push({y:this.py, f:()=>{
-      drawPerson(this.px-cam, this.py-camY, {...PLAYER_LOOK, dir:this.dir, walk:this.walking}, G.time);
+      drawPerson(this.px-cam, this.py-camY, {...playerLook(), dir:this.dir, walk:this.walking}, G.time);
     }});
     // Lóng
     items.push({y:this.ly+30, f:()=> drawLong(this.lx-cam, this.ly-camY, G.time, this.lx>this.px)});
@@ -1658,6 +1988,7 @@ const titleScene = {
         fadeOut(()=>{ swapScene(nameScene); fadeIn(); });
       } else if (o==='CONTINUE'){
         const s=this.save; G.name=s.name; G.ch=Math.max(1,s.ch); G.step=s.step; G.scrolls=s.scrolls||[];
+        if (s.look) G.look = s.look;
         fadeOut(()=>{ swapScene(makeChapterCard(G.ch, ()=>{ swapScene(world); fadeIn(); })); fadeIn(); });
       } else if (o==='JOURNAL'){ pushScene(makeJournal()); }
     }
@@ -1701,7 +2032,7 @@ const nameScene = {
   enter(){ typedName=''; typingMode = true;
     finishTyping = ()=>{ if (!typedName.trim()) typedName='You';
       G.name = typedName.trim(); typingMode = false; SFX.select();
-      fadeOut(()=>{ swapScene(homeScene); homeScene.mode='intro'; fadeIn(); });
+      fadeOut(()=>{ swapScene(creatorScene); fadeIn(); });
     };
   },
   exit(){ typingMode=false; },
@@ -1791,7 +2122,7 @@ const homeScene = {
     say([
       {who:'Nǎi Nai', port:NAINAI_LOOK, text:"Before dinner — this is for you. A red envelope, hóngbāo, just like MY grandmother gave me."},
       {who:'Nǎi Nai', port:NAINAI_LOOK, text:"The money inside is small. The WISHES inside are not. Luck, protection, a good year…"},
-      {who:G.name, port:PLAYER_LOOK, text:"Nǎi Nai… it's GLOWING?!"},
+      {who:G.name, port:playerLook(), text:"Nǎi Nai… it's GLOWING?!"},
       {who:'Nǎi Nai', port:NAINAI_LOOK, text:"Ah. So it chose you. Listen: our festivals live only as long as someone remembers WHY we keep them."},
       {who:'Nǎi Nai', port:NAINAI_LOOK, text:"Open it, little one. Go learn the stories… and bring them home to me."},
     ], ()=>{
@@ -1813,9 +2144,9 @@ const homeScene = {
   },
   finalTalk(){
     say([
-      {who:G.name, port:PLAYER_LOOK, text:"Nǎi Nai — the envelope — there was a village, and a beast called Nian, and a poet in the river, and the LADY ON THE MOON—"},
+      {who:G.name, port:playerLook(), text:"Nǎi Nai — the envelope — there was a village, and a beast called Nian, and a poet in the river, and the LADY ON THE MOON—"},
       {who:'Nǎi Nai', port:NAINAI_LOOK, text:"Slow down, slow down! …So. You met them all."},
-      {who:G.name, port:PLAYER_LOOK, text:"Wait. How do YOU know what I—"},
+      {who:G.name, port:playerLook(), text:"Wait. How do YOU know what I—"},
       {who:'Nǎi Nai', port:NAINAI_LOOK, text:"A girl with two hair buns once made dumplings with a traveler who had YOUR smile. I never forgot the recipe."},
       {who:'Nǎi Nai', port:NAINAI_LOOK, text:"The stories are yours now, "+G.name+". Tonight at dinner, YOU tell them. At Mid-Autumn, YOU cut the mooncakes."},
       {who:'Nǎi Nai', port:NAINAI_LOOK, text:"That is how a family keeps its lanterns lit."},
@@ -1859,7 +2190,7 @@ const homeScene = {
     drawPerson(250,126,{...NAINAI_LOOK, dir:'left'},G.time);
     if (this.mode==='intro') drawEnvelope(262,112,0.9,G.time,true);
     // player
-    drawPerson(this.px,this.py,{...PLAYER_LOOK, dir:this.dir, walk:this.walking},G.time);
+    drawPerson(this.px,this.py,{...playerLook(), dir:this.dir, walk:this.walking},G.time);
     drawParts(0,0);
     // prompt
     if (!DLG.active && dist(this.px,this.py,250,126)<30){
@@ -2074,6 +2405,114 @@ const creditsScene = {
   }
 };
 /* ============================================================
+   CHARACTER CREATOR — build your own hero
+   ============================================================ */
+const CC_OPTS = {
+  hairstyle: { label:'HAIRSTYLE', names:['Short','Long','Twin buns','Ponytail'], vals:['short','long','buns','pony'] },
+  hair: { label:'HAIR', swatch:true, names:['Black','Brown','Auburn','Midnight'], vals:['#241a1e','#4a2c1a','#8a4a2c','#1a2438'] },
+  skin: { label:'SKIN', swatch:true, names:['Light','Tan','Brown','Deep'], vals:['#f2c896','#e8b078','#c68a58','#8a5a38'] },
+  top:  { label:'OUTFIT', swatch:true, names:['Festival Red','River Blue','Lantern Gold','Bamboo Green','Plum Purple'],
+          vals:['#e03c28','#3a5ab0','#e8b028','#3e8b4e','#8a4a9a'] },
+  extra:{ label:'EXTRA', names:['None','Headband','Blush','Glasses'], vals:['none','band','blush','glasses'] },
+};
+const CC_PANTS = { '#e03c28':'#3a4a8a', '#3a5ab0':'#2a2a3a', '#e8b028':'#3a4a8a', '#3e8b4e':'#3a3a2a', '#8a4a9a':'#3a2a45' };
+const CC_ROWS = ['hairstyle','hair','skin','top','extra','start'];
+
+const creatorScene = {
+  sel:0, idx:{hairstyle:0, hair:0, skin:0, top:0, extra:0}, t:0,
+  enter(){ this.t=0; },
+  look(){
+    const v = k => CC_OPTS[k].vals[this.idx[k]];
+    const extra = v('extra');
+    return {
+      skin:v('skin'), hair:v('hair'), top:v('top'), pants:CC_PANTS[v('top')],
+      hairstyle:v('hairstyle'),
+      band: extra==='band', blush: extra==='blush', glasses: extra==='glasses',
+    };
+  },
+  cycle(key, delta){
+    const n = CC_OPTS[key].vals.length;
+    this.idx[key] = (this.idx[key] + delta + n) % n;
+    SFX.blip();
+  },
+  finish(){
+    G.look = this.look();
+    SFX.win();
+    burst(56, 90, ['#f2b632','#ffe98a','#e03c28'], 30, 60);
+    fadeOut(()=>{ swapScene(homeScene); homeScene.mode='intro'; fadeIn(); });
+  },
+  update(dt){
+    this.t += dt; updateFade(dt); updateParts(dt);
+    if (just.up){ this.sel = (this.sel+CC_ROWS.length-1)%CC_ROWS.length; SFX.blip(); }
+    if (just.down){ this.sel = (this.sel+1)%CC_ROWS.length; SFX.blip(); }
+    const row = CC_ROWS[this.sel];
+    if (row!=='start'){
+      if (just.left) this.cycle(row,-1);
+      if (just.right) this.cycle(row,1);
+      if (just.a && !tapPos) this.cycle(row,1);
+    } else if (just.a && !tapPos){ this.finish(); return; }
+    // touch: tap a row to cycle it, tap START to go
+    if (tapPos){
+      for (let i=0;i<CC_ROWS.length;i++){
+        const y = 34+i*22;
+        if (tapPos.y>y-4 && tapPos.y<y+16 && tapPos.x>100){
+          this.sel = i;
+          if (CC_ROWS[i]==='start') this.finish();
+          else this.cycle(CC_ROWS[i], 1);
+          break;
+        }
+      }
+    }
+  },
+  render(){
+    R(0,0,LW,LH,'#141026');
+    for(let i=0;i<50;i++){ R(thash(i,5)*LW, thash(i,11)*LH, 1, 1, 'rgba(232,228,244,0.45)'); }
+    R(0,0,LW,18,'rgba(20,12,16,0.9)'); R(0,17,LW,1,'#f2b632');
+    T('CREATE YOUR HERO', LW/2, 4, 8, '#f2b632','center');
+    // preview card — the hero turns and walks in place
+    box(14, 28, 84, 128, {bg:'rgba(28,20,40,0.85)'});
+    const dirs = ['down','left','up','right'];
+    const dir = dirs[Math.floor(this.t/1.3)%4];
+    const lk = {...this.look(), dir, walk:true};
+    drawPersonZoomed(56, 132, lk, this.t, 4);
+    T(G.name, 56, 142, 6.4, '#ffe9b0','center');
+    drawParts(0,0);
+    // option rows
+    for (let i=0;i<CC_ROWS.length;i++){
+      const key = CC_ROWS[i], y = 34+i*22, on = i===this.sel;
+      if (key==='start'){
+        const w = 96;
+        box(180-w/2+26, y-2, w, 15, {border: on?'#f2b632':'#6a5a48', bg: on?'rgba(90,40,20,0.9)':'rgba(20,12,16,0.85)'});
+        T('✦ START! ✦', 206, y+1, 7, on?'#ffe9b0':'#b8a88e','center');
+        continue;
+      }
+      const o = CC_OPTS[key];
+      T(o.label, 106, y, 5.2, on?'#f2b632':'#8a7c6a');
+      if (on){ T('◀', 158, y+1, 6, '#f2b632'); T('▶', 298, y+1, 6, '#f2b632','right'); }
+      if (o.swatch){
+        const v = o.vals[this.idx[key]];
+        R(170, y-1, 11, 11, '#2b1a26'); R(171, y, 9, 9, v);
+        T(o.names[this.idx[key]], 188, y+1, 6, on?'#ffe9b0':'#cfc0a8');
+      } else {
+        T(o.names[this.idx[key]], 170, y+1, 6.4, on?'#ffe9b0':'#cfc0a8');
+      }
+    }
+    T('▲▼ pick a row · ◀▶ change it · then START!', LW/2, 166, 5.2, '#9a8c78','center');
+    drawFade();
+  }
+};
+/* draw a chibi at an integer zoom, anchored at feet center */
+function drawPersonZoomed(x, y, o, t, z){
+  const dir = o.dir||'down';
+  let frame = 0;
+  if (o.walk){ const ph = Math.floor(t*6)%2; frame = ph; }
+  const spr = chibiSprite(o, dir, frame);
+  cx.fillStyle='rgba(20,8,16,0.3)';
+  cx.fillRect((x-6*z)*P, (y-2)*P, 12*z*P, 3*P);
+  cx.imageSmoothingEnabled = false;
+  cx.drawImage(spr, (x-8*z)*P, (y-20*z)*P, 16*z*P, 20*z*P);
+}
+/* ============================================================
    QUESTS — NPC dialogue, chapter logic, ceremonies
    ============================================================ */
 
@@ -2216,7 +2655,7 @@ function makeNianBattle(){
       drawPerson(288,152,{...port('mei'), dir:'left'},t);
       drawPerson(300,146,{...port('hua'), dir:'left'},t);
       // you, standing your ground
-      drawPerson(240,152,{...PLAYER_LOOK, dir:'left'},t);
+      drawPerson(240,152,{...playerLook(), dir:'left'},t);
       // NIAN
       if (done){
         if (fledT<0) fledT = t;
@@ -2324,7 +2763,7 @@ const talks = {
         say([
           {who:'Mei', port:port('mei'), text:"Before you go… here. A red envelope. My favorite tradition."},
           {who:'Mei', port:port('mei'), text:"Give it back to me someday — oh, in about fifty years. Promise?"},
-          {who:G.name, port:PLAYER_LOOK, text:"…Deal. But that's a weird thing to— wait. Two hair buns. Dumpling recipe. NO WAY—"},
+          {who:G.name, port:playerLook(), text:"…Deal. But that's a weird thing to— wait. Two hair buns. Dumpling recipe. NO WAY—"},
           {who:'Lóng', port:LONG_PORTRAIT, text:"Nǎi Nai is waiting for her dumplings, little keeper. Close your eyes."},
         ], ()=>{
           fadeOut(()=>{ homeScene.mode='ending'; swapScene(homeScene); fadeIn(); });
@@ -2512,7 +2951,7 @@ const talks = {
           for(let i=0;i<progress;i++) drawMooncake(74+i*26, 92, 1.1);
           if (done) for(let i=0;i<3;i++) glow(74+i*26, 92, 10, '#ffd964', 0.25);
           drawPerson(180,140,{...port('fang'), dir:'left'},t);
-          drawPerson(140,146,{...PLAYER_LOOK, dir:'right'},t);
+          drawPerson(140,146,{...playerLook(), dir:'right'},t);
         }
       }, ()=>{
         say([
