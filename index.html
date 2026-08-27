@@ -496,7 +496,7 @@ const SONGS = {
 };
 function duckMusic(on){
   if (!AC || !musicGain) return;
-  musicGain.gain.setTargetAtTime(on ? 0.22 : 0.42, AC.currentTime, 0.15);
+  musicGain.gain.setTargetAtTime(on ? 0.14 : 0.42, AC.currentTime, 0.15);
 }
 function playMusic(idx){
   if (musicChapter === idx) return;
@@ -533,22 +533,22 @@ function playMusic(idx){
    soft musical boops with per-character base note, melody contour,
    and cadence; pitch rises into "?" and falls into "." */
 const VOICES = {
-  'Lóng':      { f:92,  type:'sawtooth', sub:true, lp:380, gap:0.095, mel:[0,-2,-4,-1,-5], len:0.1,  vol:0.15 },
-  '???':       { f:92,  type:'sawtooth', sub:true, lp:380, gap:0.095, mel:[0,-2,-4,-1,-5], len:0.1,  vol:0.15 },
-  'Nǎi Nai':   { f:262, type:'triangle', trem:9,  gap:0.078, mel:[0,2,-1,3,0,-2],  len:0.08,  vol:0.12 },
-  'Granny Zhu':{ f:288, type:'triangle', trem:11, gap:0.072, mel:[0,3,1,4,-1],     len:0.072, vol:0.12 },
-  'Elder Shan':{ f:138, type:'sine',     gap:0.088, mel:[0,-1,-3,1,-2],  len:0.085, vol:0.15 },
-  'Old Wen':   { f:122, type:'sine',     gap:0.098, mel:[0,-2,-1,-4],    len:0.09,  vol:0.14 },
-  'Captain Yu':{ f:152, type:'square',   lp:900, gap:0.075, mel:[0,1,-2,0,-3], len:0.06, vol:0.09 },
-  'Uncle Bo':  { f:178, type:'triangle', gap:0.066, mel:[0,2,0,-2,1],    len:0.07,  vol:0.12 },
-  'Auntie Hua':{ f:242, type:'triangle', gap:0.06,  mel:[0,3,1,-1,4,0],  len:0.065, vol:0.11 },
-  'Baker Fang':{ f:196, type:'triangle', gap:0.055, mel:[0,4,2,5,0,3],   len:0.06,  vol:0.12 },
-  'Mei':       { f:368, type:'sine',     gap:0.052, mel:[0,4,2,7,3,5],   len:0.055, vol:0.11 },
-  'Ma':        { f:258, type:'sine',     gap:0.065, mel:[0,2,-1,3],      len:0.07,  vol:0.11 },
-  'Ba':        { f:158, type:'triangle', gap:0.072, mel:[0,-2,1,-3],     len:0.07,  vol:0.12 },
-  '':          { f:205, type:'sine',     gap:0.11,  mel:[0,0,-1],        len:0.06,  vol:0.07 },
+  'Lóng':      { f:92,  type:'sawtooth', sub:true, lp:380, gap:0.095, mel:[0,-2,-4,-1,-5], len:0.1,  vol:0.3 },
+  '???':       { f:92,  type:'sawtooth', sub:true, lp:380, gap:0.095, mel:[0,-2,-4,-1,-5], len:0.1,  vol:0.3 },
+  'Nǎi Nai':   { f:262, type:'triangle', trem:9,  gap:0.078, mel:[0,2,-1,3,0,-2],  len:0.08,  vol:0.24 },
+  'Granny Zhu':{ f:288, type:'triangle', trem:11, gap:0.072, mel:[0,3,1,4,-1],     len:0.072, vol:0.24 },
+  'Elder Shan':{ f:138, type:'sine',     gap:0.088, mel:[0,-1,-3,1,-2],  len:0.085, vol:0.28 },
+  'Old Wen':   { f:122, type:'sine',     gap:0.098, mel:[0,-2,-1,-4],    len:0.09,  vol:0.27 },
+  'Captain Yu':{ f:152, type:'square',   lp:900, gap:0.075, mel:[0,1,-2,0,-3], len:0.06, vol:0.19 },
+  'Uncle Bo':  { f:178, type:'triangle', gap:0.066, mel:[0,2,0,-2,1],    len:0.07,  vol:0.23 },
+  'Auntie Hua':{ f:242, type:'triangle', gap:0.06,  mel:[0,3,1,-1,4,0],  len:0.065, vol:0.22 },
+  'Baker Fang':{ f:196, type:'triangle', gap:0.055, mel:[0,4,2,5,0,3],   len:0.06,  vol:0.23 },
+  'Mei':       { f:368, type:'sine',     gap:0.052, mel:[0,4,2,7,3,5],   len:0.055, vol:0.22 },
+  'Ma':        { f:258, type:'sine',     gap:0.065, mel:[0,2,-1,3],      len:0.07,  vol:0.22 },
+  'Ba':        { f:158, type:'triangle', gap:0.072, mel:[0,-2,1,-3],     len:0.07,  vol:0.23 },
+  '':          { f:205, type:'sine',     gap:0.11,  mel:[0,0,-1],        len:0.06,  vol:0.13 },
 };
-const PLAYER_VOICE = { f:310, type:'triangle', gap:0.056, mel:[0,3,1,5,2], len:0.06, vol:0.12 };
+const PLAYER_VOICE = { f:310, type:'triangle', gap:0.056, mel:[0,3,1,5,2], len:0.06, vol:0.23 };
 function voiceFor(who){ return VOICES[who] || (who===G.name ? PLAYER_VOICE : VOICES['Uncle Bo']); }
 
 function voiceBlip(v, i, ahead){
@@ -583,7 +583,7 @@ function voiceBlip(v, i, ahead){
     const s2 = AC.createOscillator(); s2.type='sine';
     s2.frequency.setValueAtTime(f/2, t0);
     s2.frequency.linearRampToValueAtTime(f2/2, t0+dur*1.3);
-    const g2 = AC.createGain(); g2.gain.setValueAtTime(0.15, t0);
+    const g2 = AC.createGain(); g2.gain.setValueAtTime(0.28, t0);
     g2.gain.exponentialRampToValueAtTime(0.001, t0+dur*1.3);
     s2.connect(g2); g2.connect(masterGain); s2.start(t0); s2.stop(t0+dur*1.3+0.02);
   }
