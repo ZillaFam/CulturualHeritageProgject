@@ -70,7 +70,7 @@
 const LW = 320, LH = 180;         // logical resolution
 const P  = 3;                     // pixel scale (canvas is 960x540)
 const cv = document.getElementById('game');
-const cx = cv.getContext('2d');
+let cx = cv.getContext('2d');   // let: the portrait renderer briefly retargets drawing to an offscreen canvas
 cx.imageSmoothingEnabled = false;
 
 /* fit canvas to window, preserving 16:9 */
@@ -1520,6 +1520,280 @@ function drawPavilion(x, y){
   circle(x, y-31, 2, INK); circle(x, y-31.2, 1.5, '#f2b632');
 }
 /* ============================================================
+   PORTRAITS — big Stardew-style dialogue busts, one per person
+   46 x 54 framed card, procedurally shaded, cached
+   ============================================================ */
+
+const PORT_W = 46, PORT_H = 54;
+const portCache = {};
+
+function portraitSprite(look){
+  const key = JSON.stringify([look.skin,look.hair,look.top,look.pstyle,look.hairstyle,look.collar,
+    look.elder?1:0,look.beard?1:0,look.goatee?1:0,look.bun?1:0,look.buns?1:0,look.hat?1:0,
+    look.glasses?1:0,look.blush?1:0,look.band?1:0,look.jewel?1:0,look.mouth,look.dragon?1:0,look.nian?1:0]);
+  if (portCache[key]) return portCache[key];
+  const cnv = document.createElement('canvas');
+  cnv.width = PORT_W*P; cnv.height = PORT_H*P;
+  const old = cx; cx = cnv.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  paintPortrait(look);
+  cx = old;
+  portCache[key] = cnv;
+  return cnv;
+}
+function drawPortraitCard(x, y, look){
+  cx.drawImage(portraitSprite(look), Math.round(x)*P, Math.round(y)*P);
+}
+
+function paintPortrait(lk){
+  /* frame + parchment */
+  R(0,0,PORT_W,PORT_H,'#2b1a26');
+  R(1,1,PORT_W-2,PORT_H-2,'#6a4a34');
+  R(2,2,PORT_W-4,PORT_H-4,'#8a6244');
+  R(3,3,PORT_W-6,PORT_H-6,'#efe2c4');
+  for(let i=0;i<14;i++){ const h=thash(i,29); R(4+(h*97)%38, 4+(h*61)%46, 1, 1, '#e2d2ac'); }
+  R(3,3,PORT_W-6,1,'#f7ecd4'); R(3,PORT_H-4,PORT_W-6,1,'#dcc9a2');
+  for (const [gx,gy] of [[2,2],[PORT_W-4,2],[2,PORT_H-4],[PORT_W-4,PORT_H-4]]) R(gx,gy,2,2,'#e8b028');
+
+  if (lk.dragon){ paintDragonPortrait(); return; }
+  if (lk.nian){ paintNianPortrait(); return; }
+
+  const skin = lk.skin||'#f2c896', S=skin, s=shade(skin,0.84), w2=shade(skin,1.1);
+  const H=lk.hair||'#241a1e', h2=shade(H,1.5), H0=shade(H,0.6);
+  const T=lk.top||'#e03c28', t2=shade(T,0.7);
+  const style = lk.pstyle || (lk.hat?'hat': lk.buns?'buns':
+    lk.bun?(lk.elder?'elderbun':'bun'): lk.elder?'bald': (lk.hairstyle||'short'));
+  const collar = lk.collar || (lk.elder?'hanfu':'jacket');
+  const mouth = lk.mouth || 'smile';
+  const C0 = 23;                 // face center x
+
+  /* hair behind the head */
+  if (style==='long'){
+    R(10,18,6,28,H0); R(30,18,6,28,H0);
+    R(11,20,4,24,H); R(31,20,4,24,H);
+    tri(10,46,13,52,16,46,H); tri(30,46,33,52,36,46,H);
+  }
+  if (style==='pony'){
+    R(28,8,7,6,H0); R(31,12,6,10,H);
+    tri(33,22,37,30,30,24,H); R(30,13,6,2,'#d43424');
+  }
+  if (style==='elderbun' || style==='bun'){
+    circle(C0,9,4.6,'#2b1a26'); circle(C0,9,3.8,H); circle(C0-1,8,1.4,h2);
+  }
+  if (style==='buns'){
+    circle(11,13,5,'#2b1a26'); circle(11,13,4.2,H); circle(10,12,1.5,h2);
+    circle(35,13,5,'#2b1a26'); circle(35,13,4.2,H); circle(34,12,1.5,h2);
+  }
+
+  /* shoulders + collar */
+  if (collar==='hanfu'){
+    R(6,45,34,6,t2);
+    tri(6,51,6,45,14,45,t2);
+    tri(23,40,6,51,6,45,T); tri(23,40,6,51,23,51,T);
+    tri(23,40,40,51,40,45,T); tri(23,40,40,51,23,51,T);
+    // cross-collar trims
+    for (let k=0;k<9;k++){ R(23-k*1.9-1.4, 40+k*1.2, 2.4, 1.4, '#e8b028'); }
+    for (let k=0;k<8;k++){ R(23+k*2.1-0.6, 41+k*1.2, 2.4, 1.4, t2); }
+    R(19,38,8,3,S);
+  } else if (collar==='apron'){
+    R(6,45,34,6,T);
+    tri(6,51,6,45,14,45,T); tri(40,51,40,45,32,45,T);
+    R(14,42,18,9,'#f2ead8');
+    R(15,42,2,9,'#ddd2b8'); R(29,42,2,9,'#ddd2b8');
+    R(20,46,3,2,'#e2d6bc'); R(25,48,2,2,'#e2d6bc');
+    R(19,38,8,4,S);
+  } else { // jacket
+    R(6,45,34,6,T);
+    tri(6,51,6,45,16,45,T); tri(40,51,40,45,30,45,T);
+    R(17,42,12,9,'#ece6d6');
+    tri(17,42,12,51,17,51,t2); tri(29,42,34,51,29,51,t2);
+    R(17,42,12,1.4,'#d8d0ba');
+    R(19,38,8,4,S);
+  }
+  R(19,37.6,8,2,s);              // jaw shadow on the neck
+
+  /* head */
+  ell(C0+0.4, 24.4, 10.6, 11.8, s);
+  ell(C0, 24, 10.2, 11.4, S);
+  dome(C0, 33.6, 6.8, 4, S);      // chin
+  dome(C0-2, 17, 6.4, 3.6, w2);   // forehead light
+  ell(12.4, 25, 1.8, 2.8, s); ell(12.6, 24.8, 1.4, 2.2, S);   // ears
+  ell(33.6, 25, 1.8, 2.8, s); ell(33.4, 24.8, 1.4, 2.2, S);
+  if (lk.jewel){ R(12, 28.4, 1.6, 1.6, '#e8b028'); R(33.4, 28.4, 1.6, 1.6, '#e8b028'); }
+
+  /* eyes */
+  for (const ex of [18, 28]){
+    ell(ex, 24.2, 3.2, 2.5, '#ffffff');
+    R(ex-3, 21.4, 6.4, 1.2, '#3a2318');                    // lash line
+    circle(ex+0.4, 24.4, 1.8, '#54341e');                  // iris
+    circle(ex+0.4, 24.6, 1, '#241410');
+    R(ex-0.6, 23.2, 1.2, 1.2, '#ffffff');                  // shine
+    R(ex-3, 26.8, 6, 0.9, s);                              // lower lid
+  }
+  /* brows */
+  const browC = lk.elder ? '#d8d4cc' : H0;
+  R(14.8, 18.4, 6.4, lk.elder?2:1.2, browC);
+  R(25, 18.4, 6.4, lk.elder?2:1.2, browC);
+  R(14.8, 19.2, 1.6, 1, browC); R(29.6, 19.2, 1.6, 1, browC);
+  /* nose */
+  R(C0-0.6, 26.6, 1.4, 3.2, s);
+  R(C0-1.6, 29.2, 3.4, 1, s);
+  /* mouth */
+  if (mouth==='open'){
+    dome(C0, 33.4, 3.4, 0.1, '#8a3226');
+    R(C0-3.4, 31.6, 7, 2, '#8a3226');
+    R(C0-2.6, 31.6, 5.4, 1, '#fff6ea');
+    R(C0-4.2, 30.8, 1.4, 1.4, '#8a3226'); R(C0+2.8, 30.8, 1.4, 1.4, '#8a3226');
+  } else if (mouth==='calm'){
+    R(C0-2.4, 31.6, 5, 1.2, '#a54a36');
+  } else {
+    R(C0-3, 31.4, 6.4, 1.4, '#a54a36');
+    R(C0-4, 30.6, 1.2, 1.2, '#a54a36'); R(C0+2.8, 30.6, 1.2, 1.2, '#a54a36');
+    R(C0-2, 33, 4.4, 0.9, w2);
+  }
+  /* cheeks */
+  ell(15.6, 28.6, 2.2, 1.3, lk.blush ? '#f2a08c' : shade(skin,0.93));
+  ell(30.4, 28.6, 2.2, 1.3, lk.blush ? '#f2a08c' : shade(skin,0.93));
+  /* elder wrinkles */
+  if (lk.elder){
+    R(15.4, 27, 4, 0.9, s); R(26.6, 27, 4, 0.9, s);
+    R(C0-6.8, 33, 2, 0.9, s); R(C0+4.8, 33, 2, 0.9, s);
+    R(C0-3, 16.6, 6.4, 0.9, s);
+  }
+
+  /* hair on top */
+  if (style!=='bald' && style!=='hat'){
+    dome(C0, 16.6, 10.8, 7.4, H0);
+    dome(C0-0.6, 16, 10.2, 6.8, H);
+    // fringe
+    if (style==='side'){
+      tri(12.6, 17, 12.6, 22.6, 17, 17, H);
+      tri(14, 16, 26, 20.8, 33.4, 15, H);
+      tri(30, 16, 33.4, 21.6, 33.4, 15, H);
+    } else if (style==='elderbun' || style==='bun'){
+      R(12.6, 16, 20.8, 2.4, H);          // smooth pulled-back line
+      R(12.6, 17.2, 2, 4, H); R(31.8, 17.2, 2, 4, H);
+    } else {
+      for (let k=0;k<5;k++){
+        tri(13+k*4.2, 15.6, 15+k*4.2, 19.8+(k%2)*1.4, 17.4+k*4.2, 15.6, H);
+      }
+      R(12.6, 15, 2.2, 6.6, H); R(31.2, 15, 2.2, 6.6, H);
+    }
+    // shine streak
+    R(16, 12.4, 9, 1.4, h2); R(19, 11, 6, 1.4, h2);
+    if (style==='short'){
+      tri(14, 11, 16, 7.6, 19, 10.4, H); tri(21, 10, 23, 6.8, 26, 9.8, H); tri(28, 10.6, 31, 8, 32, 11.6, H);
+    }
+    if (style==='long'){ R(11, 16, 3, 10, H); R(32, 16, 3, 10, H); }
+  }
+  if (style==='bald'){
+    dome(C0, 14.6, 9.4, 3, w2);
+    R(12.4, 19, 2.6, 7, browC); R(31, 19, 2.6, 7, browC);
+    R(12.8, 17.4, 3.4, 2.4, browC); R(29.8, 17.4, 3.4, 2.4, browC);
+  }
+  if (style==='hat'){
+    R(12.6, 16, 20.8, 3, H0);           // hair peeking under the brim
+    ell(C0, 14.4, 15, 3.6, '#2b1a26');
+    ell(C0, 14, 14.4, 3, '#d8b869');
+    ell(C0, 13.4, 14.4, 2.2, '#e6cb85');
+    dome(C0, 10.6, 8.4, 6, '#d8b869');
+    dome(C0-1.4, 9.4, 5.4, 3.6, '#e6cb85');
+    R(C0-8.4, 10.6, 16.8, 1, '#b6975a');
+    R(C0-6, 7.4, 12, 0.9, '#b6975a');
+  }
+  /* headband */
+  if (lk.band){ R(12.6, 17.6, 20.8, 2.2, '#d43424'); R(13.6, 17.9, 5, 0.9, '#f06848'); }
+  /* facial hair */
+  if (lk.beard){
+    const D2='#e6e2da', D0='#c2beb2';
+    dome(C0, 41, 8, 3, D0);
+    R(15, 34, 16, 6, D0);
+    ell(C0, 35, 8.2, 4.6, D2);
+    tri(19, 40, C0, 49, 27, 40, D2);
+    R(17, 30.6, 5, 1.8, D2); R(24, 30.6, 5, 1.8, D2);   // mustache
+    if (mouth!=='open') R(C0-2.4, 31.8, 5, 1, '#8a6a52');
+  } else if (lk.goatee){
+    R(C0-2.4, 34.6, 5, 2.6, H0);
+    tri(C0-2, 37, C0, 40, C0+2, 37, H0);
+    R(16.6, 30.4, 4, 1.2, H0); R(25.4, 30.4, 4, 1.2, H0);
+  }
+  /* glasses last */
+  if (lk.glasses){
+    const g='#caa53e';
+    for (const ex of [18, 28]){
+      R(ex-4, 20.6, 8, 1, g); R(ex-4, 27.4, 8, 1, g);
+      R(ex-4.8, 21.6, 1, 6, g); R(ex+3.8, 21.6, 1, 6, g);
+    }
+    R(22, 23.4, 2, 1, g);
+    R(12.8, 22.6, 1.8, 1, g); R(31.4, 22.6, 1.8, 1, g);
+  }
+}
+
+/* Lóng's own portrait */
+function paintDragonPortrait(){
+  // mane
+  for (let k=0;k<6;k++){
+    const ang = -1.4 + k*0.56;
+    tri(16+Math.cos(ang+Math.PI)*4, 24+Math.sin(ang+Math.PI)*4,
+        16+Math.cos(ang+Math.PI)*15, 24+Math.sin(ang+Math.PI)*15,
+        16+Math.cos(ang+Math.PI+0.5)*5, 24+Math.sin(ang+Math.PI+0.5)*5,
+        k%2 ? '#d43424' : '#8a1c14');
+  }
+  // antlers
+  for (const ox of [16, 22]){
+    for (let k=0;k<3;k++) R(ox-k*2, 11-k*2.6, 3, 3.4, '#2b1a26');
+    for (let k=0;k<3;k++) R(ox-k*2+0.6, 11.4-k*2.6, 1.8, 2.4, '#e8d8b8');
+  }
+  // skull
+  circle(21, 24, 9.4, '#2b1a26'); circle(21, 24, 8.6, '#c07c1c');
+  circle(19.6, 22.4, 6.8, '#f2b632');
+  circle(18, 20.6, 3.2, '#ffe27a');
+  // snout
+  R(24, 22, 17, 9, '#2b1a26');
+  R(24, 22.8, 15.6, 7.4, '#f2b632');
+  R(24, 22.8, 14.6, 2, '#ffe27a');
+  circle(39.4, 26.6, 3.4, '#2b1a26'); circle(38.8, 26.4, 2.8, '#f2b632');
+  R(37, 23.4, 2.2, 1.6, '#2b1a26');
+  // brow + eye
+  R(22.6, 18.4, 8.4, 2.6, '#2b1a26'); R(23.4, 19, 6.8, 1.4, '#c07c1c');
+  R(23.4, 21, 5.4, 4.6, '#2b1a26');
+  R(24, 21.6, 4.2, 3.6, '#ffffff');
+  R(26, 22, 2, 3, '#18100e');
+  R(24.6, 22, 1, 1, '#ffffff');
+  // grin + teeth
+  R(25, 29.2, 14, 2, '#8a1c14');
+  for (const fx of [26.6, 30.6, 34.6]) tri(fx, 29.2, fx+1, 31.4, fx+2, 29.2, '#fff3d0');
+  R(24.4, 31, 14.4, 2.6, '#2b1a26'); R(25, 31.4, 13, 1.6, '#c07c1c');
+  // whisker dots
+  for (let k=0;k<7;k++){
+    R(38-k*3, 34+Math.sin(k*0.8)*2+k*0.8, 1.2, 1.2, '#e8b028');
+    R(36-k*3, 38+Math.cos(k*0.7)*2+k*0.9, 1.2, 1.2, '#d43424');
+  }
+  // chest coils
+  circle(14, 47, 6.4, '#2b1a26'); circle(14, 47, 5.6, '#c07c1c');
+  circle(13, 45.6, 3.6, '#f2b632');
+  circle(30, 49, 6, '#2b1a26'); circle(30, 49, 5.2, '#c07c1c'); circle(29, 47.8, 3.2, '#f2b632');
+  glow(21, 24, 15, '#f2b632', 0.14);
+}
+function paintNianPortrait(){
+  circle(23, 26, 12, '#2b1a26'); circle(23, 26, 11, '#48962c');
+  circle(20, 22.6, 5.6, '#7cc93e');
+  R(12, 22, 22, 3, '#2b1a26'); R(13, 22.6, 20, 1.6, '#143c16');
+  R(14.6, 26, 5.4, 3, '#2b1a26'); R(15.2, 26.4, 4, 2, '#ff3820');
+  R(26, 26, 5.4, 3, '#2b1a26'); R(26.6, 26.4, 4, 2, '#ff3820');
+  R(15, 32, 16, 4, '#2b1a26'); R(15.6, 32.6, 14.8, 2.6, '#4a1418');
+  for (const fx of [16.6, 21, 25.4]) tri(fx, 35.2, fx+1.4, 31.6, fx+2.8, 35.2, '#ede0bc');
+  for (const s2 of [-1,1]){
+    R(23+s2*10-2, 12, 4, 5, '#2b1a26'); R(23+s2*10-1.4, 12.6, 2.6, 3.6, '#f2b632');
+  }
+  glow(18, 27, 6, '#ff5030', 0.4); glow(28, 27, 6, '#ff5030', 0.4);
+}
+
+/* legacy 24x24 API — keep signature used by old callers, now unused in dialogue */
+function drawPortrait(x, y, o){
+  drawPortraitCard(x, y, o);
+}
+/* ============================================================
    DATA — facts, sources, map, NPCs, quizzes
    All festival facts checked against the sources listed below.
    ============================================================ */
@@ -1635,27 +1909,27 @@ const SOLIDS = solidRects();
 /* ---------- NPCs ---------- */
 /* look: options for drawPerson / drawPortrait */
 const NPCS = {
-  mei:  { name:'Mei',        look:{skin:'#eac086', hair:'#181418', top:'#e03c28', pants:'#3a3a55', child:true, buns:true, blush:true},
+  mei:  { name:'Mei',        look:{skin:'#eac086', hair:'#181418', top:'#e03c28', pants:'#3a3a55', child:true, buns:true, blush:true, collar:'hanfu', jewel:true, mouth:'open'},
           pos:{1:[150,120,'down'], 2:[300,150,'down'], 3:[700,262,'up']} },
   elder:{ name:'Elder Shan', look:{skin:'#dcb27c', hair:'#e8e4dc', top:'#8a6a3a', pants:'#4a3a2a', elder:true, beard:true},
           pos:{1:[445,110,'down'], 2:[445,110,'down'], 3:[445,110,'down']} },
-  hua:  { name:'Auntie Hua', look:{skin:'#eac086', hair:'#2a2024', top:'#8a4a9a', pants:'#5a3a55', bun:true},
+  hua:  { name:'Auntie Hua', look:{skin:'#eac086', hair:'#2a2024', top:'#8a4a9a', pants:'#5a3a55', bun:true, collar:'hanfu', jewel:true, mouth:'open'},
           pos:{1:[240,108,'down'], 2:[240,108,'down'], 3:[240,108,'down']} },
-  bo:   { name:'Uncle Bo',   look:{skin:'#d8a878', hair:'#2a2024', top:'#3a5ab0', pants:'#2a2a3a'},
+  bo:   { name:'Uncle Bo',   look:{skin:'#d8a878', hair:'#2a2024', top:'#3a5ab0', pants:'#2a2a3a', pstyle:'side', goatee:true},
           pos:{1:[596,108,'down'], 2:[596,108,'down'], 3:[596,108,'down']} },
-  yu:   { name:'Captain Yu', look:{skin:'#d09868', hair:'#181418', top:'#207878', pants:'#3a3a2a', hat:true},
+  yu:   { name:'Captain Yu', look:{skin:'#d09868', hair:'#181418', top:'#207878', pants:'#3a3a2a', hat:true, goatee:true, mouth:'calm'},
           pos:{1:[672,242,'down'], 2:[672,242,'down'], 3:[672,242,'down']} },
-  wen:  { name:'Old Wen',    look:{skin:'#dcb27c', hair:'#d8d4cc', top:'#3e7b4e', pants:'#3a3a2a', elder:true, beard:true},
+  wen:  { name:'Old Wen',    look:{skin:'#dcb27c', hair:'#d8d4cc', top:'#3e7b4e', pants:'#3a3a2a', elder:true, beard:true, mouth:'calm'},
           pos:{1:[140,200,'down'], 2:[140,200,'down'], 3:[140,200,'down']} },
-  zhu:  { name:'Granny Zhu', look:{skin:'#e0b284', hair:'#e8e4dc', top:'#5a7a3a', pants:'#4a4a3a', elder:true, bun:true},
+  zhu:  { name:'Granny Zhu', look:{skin:'#e0b284', hair:'#e8e4dc', top:'#5a7a3a', pants:'#4a4a3a', elder:true, bun:true, mouth:'open'},
           pos:{1:[340,190,'down'], 2:[340,190,'down'], 3:[340,190,'down']} },
-  fang: { name:'Baker Fang', look:{skin:'#e8bc90', hair:'#3a2c24', top:'#e8e0d0', pants:'#5a4a3a'},
+  fang: { name:'Baker Fang', look:{skin:'#e8bc90', hair:'#3a2c24', top:'#e8e0d0', pants:'#5a4a3a', pstyle:'side', collar:'apron', mouth:'open'},
           pos:{1:[700,108,'down'], 2:[700,108,'down'], 3:[700,108,'down']} },
 };
 const PLAYER_LOOK = { skin:'#eac086', hair:'#181418', top:'#e8b028', pants:'#3a4a8a' };
 const NAINAI_LOOK = { skin:'#e8c092', hair:'#e8e4dc', top:'#7a3a8a', pants:'#4a3a45', elder:true, bun:true, glasses:true };
-const MA_LOOK     = { skin:'#eac086', hair:'#2a2024', top:'#c05878', pants:'#3a3a55', bun:true };
-const BA_LOOK     = { skin:'#d8a878', hair:'#181418', top:'#3a6a5a', pants:'#2a2a3a' };
+const MA_LOOK     = { skin:'#eac086', hair:'#2a2024', top:'#c05878', pants:'#3a3a55', bun:true, pstyle:'long', jewel:true };
+const BA_LOOK     = { skin:'#d8a878', hair:'#181418', top:'#3a6a5a', pants:'#2a2a3a', goatee:true };
 const LONG_PORTRAIT = { dragon:true };
 
 /* ---------- objectives per chapter/step ---------- */
@@ -1790,20 +2064,24 @@ function dlgRender(){
   if (!DLG.line) return;
   const e = DLG.line;
   const hasPort = !!e.port;
-  const tx = hasPort ? 66 : 36;
-  const twMax = hasPort ? 240 : 268;
-  box(8, 130, 304, 44);
-  if (hasPort) drawPortrait(14, 136, e.port);
+  const tx = hasPort ? 62 : 16;
+  const twMax = hasPort ? 244 : 288;
+  if (hasPort){
+    box(56, 130, 256, 44);
+    drawPortraitCard(6, 118, e.port);        // big Stardew-style bust
+  } else {
+    box(8, 130, 304, 44);
+  }
   if (e.who){
-    R(hasPort?42:12, 124, textW(e.who,6)+8, 11, '#a03428');
-    T(e.who, (hasPort?46:16), 126, 6, '#ffe9b0');
+    R(hasPort?58:12, 124, textW(e.who,6)+8, 11, '#a03428');
+    T(e.who, (hasPort?62:16), 126, 6, '#ffe9b0');
   }
   const shown = e.text.slice(0, Math.floor(DLG.chars));
   const lines = wrap(shown, twMax, 6.4);
   let yy = 138;
   for (let i=0;i<Math.min(lines.length,4);i++){ T(lines[i], tx, yy, 6.4, '#f4e8d0'); yy += 9; }
   if (DLG.chars >= e.text.length && Math.sin(G.time*6)>0){
-    T('▼', 300, 164, 6, '#f2b632');
+    T('▼', 302, 164, 6, '#f2b632');
   }
 }
 
@@ -2952,12 +3230,13 @@ const creatorScene = {
     for(let i=0;i<50;i++){ R(thash(i,5)*LW, thash(i,11)*LH, 1, 1, 'rgba(232,228,244,0.45)'); }
     R(0,0,LW,18,'rgba(20,12,16,0.9)'); R(0,17,LW,1,'#f2b632');
     T('CREATE YOUR HERO', LW/2, 4, 8, '#f2b632','center');
-    // preview card — the hero turns and walks in place
+    // preview card — big portrait + the hero walking in place
     box(14, 28, 84, 128, {bg:'rgba(28,20,40,0.85)'});
     const dirs = ['down','left','up','right'];
     const dir = dirs[Math.floor(this.t/1.3)%4];
     const lk = {...this.look(), dir, walk:true};
-    drawPersonZoomed(56, 132, lk, this.t, 4);
+    drawPortraitCard(33, 32, this.look());
+    drawPersonZoomed(56, 134, lk, this.t, 2);
     T(G.name, 56, 142, 6.4, '#ffe9b0','center');
     drawParts(0,0);
     // option rows
