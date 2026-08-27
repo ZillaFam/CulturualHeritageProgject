@@ -106,7 +106,7 @@ const G = {
 function saveGame(){
   try{
     localStorage.setItem('festivalquest_save', JSON.stringify({
-      name:G.name, ch:G.ch, step:G.step, scrolls:G.scrolls, muted:G.muted, look:G.look||null, voiceRead:G.voiceRead!==false
+      name:G.name, ch:G.ch, step:G.step, scrolls:G.scrolls, muted:G.muted, look:G.look||null
     }));
   }catch(e){}
 }
@@ -127,7 +127,7 @@ const KEYMAP = {
   ArrowLeft:'left', KeyA:'left', ArrowRight:'right', KeyD:'right',
   KeyZ:'a', Space:'a', Enter:'a',
   KeyX:'b', Escape:'b',
-  KeyJ:'journal', KeyM:'mute', KeyV:'voice'
+  KeyJ:'journal', KeyM:'mute'
 };
 window.addEventListener('keydown', e=>{
   const k = KEYMAP[e.code];
@@ -339,11 +339,7 @@ function frame(now){
   if (just.mute) {}
 }
 /* global mute key */
-window.addEventListener('keydown', e=>{
-  if (typingMode) return;
-  if (e.code==='KeyM') setMuted(!G.muted);
-  if (e.code==='KeyV'){ G.voiceRead = !G.voiceRead; if (!G.voiceRead && typeof stopSpeak==='function') stopSpeak(); saveGame(); }
-});
+window.addEventListener('keydown', e=>{ if (e.code==='KeyM' && !typingMode) setMuted(!G.muted); });
 
 /* fade transition helper */
 let fade = { a:0, target:0, speed:2.5, cb:null };
@@ -486,7 +482,22 @@ const SONGS = {
   3:{ bpm:66, inst:'dizi', mel:MOLI, vol:0.3,
       bass:[43,0,0,0,55,0,0,0, 50,0,0,0,55,0,0,0, 52,0,0,0,55,0,0,0, 50,0,0,0,55,0,0,0],
       perc(st){ if (st%32===0) mgong(0,0.07); } },
+  /* boss battle: war drums + low ominous riff */
+  4:{ bpm:152, inst:'zheng', vol:0.42,
+      mel:[45,-1,0,45, 48,-1,45,-1, 0,0,45,47, 45,-1,0,0,
+           45,-1,0,45, 50,-1,48,-1, 47,-1,45,-1, 43,-1,0,0],
+      bass:[33,0,0,0, 33,0,0,0, 31,0,0,0, 33,0,0,0],
+      perc(st){
+        if (st%4===0) mdrum(0, st%16===0?0.6:0.4);
+        if (st%8===6) mdrum(0,0.3);
+        if (st%16===12) woodblock(0,0.2), woodblock(0.08,0.2);
+        if (st%32===0) mgong(0,0.14);
+      } },
 };
+function duckMusic(on){
+  if (!AC || !musicGain) return;
+  musicGain.gain.setTargetAtTime(on ? 0.22 : 0.42, AC.currentTime, 0.15);
+}
 function playMusic(idx){
   if (musicChapter === idx) return;
   musicChapter = idx;
@@ -518,74 +529,65 @@ function playMusic(idx){
   musicTimer = setInterval(tick, Math.round(stepDur*1000));
 }
 
-/* ---------- character voices ---------- */
-G.voiceRead = true;
+/* ---------- character voices: Celeste-style dialogue blips ----------
+   soft musical boops with per-character base note, melody contour,
+   and cadence; pitch rises into "?" and falls into "." */
 const VOICES = {
-  'Lóng':      { p:0.1, r:0.8,  f:82,  type:'sawtooth', sub:true, lp:420, gap:0.085 },
-  '???':       { p:0.1, r:0.8,  f:82,  type:'sawtooth', sub:true, lp:420, gap:0.085 },
-  'Nǎi Nai':   { p:1.4, r:0.86, f:242, type:'triangle', warble:true, gap:0.062 },
-  'Elder Shan':{ p:0.5, r:0.8,  f:128, type:'triangle', gap:0.075 },
-  'Old Wen':   { p:0.45,r:0.74, f:118, type:'sine',     gap:0.08 },
-  'Granny Zhu':{ p:1.55,r:0.92, f:268, type:'triangle', warble:true, gap:0.06 },
-  'Captain Yu':{ p:0.55,r:1.0,  f:140, type:'square',   gap:0.068 },
-  'Uncle Bo':  { p:0.8, r:1.05, f:168, type:'triangle', gap:0.06 },
-  'Auntie Hua':{ p:1.25,r:1.05, f:232, type:'triangle', gap:0.058 },
-  'Baker Fang':{ p:0.95,r:1.1,  f:182, type:'triangle', gap:0.055 },
-  'Mei':       { p:1.7, r:1.1,  f:345, type:'triangle', gap:0.05 },
-  'Ma':        { p:1.3, r:1.0,  f:250, type:'triangle', gap:0.06 },
-  'Ba':        { p:0.7, r:0.95, f:150, type:'triangle', gap:0.065 },
-  '':          { p:1.0, r:1.0,  f:196, type:'sine',     gap:0.09 },
+  'Lóng':      { f:92,  type:'sawtooth', sub:true, lp:380, gap:0.095, mel:[0,-2,-4,-1,-5], len:0.1,  vol:0.15 },
+  '???':       { f:92,  type:'sawtooth', sub:true, lp:380, gap:0.095, mel:[0,-2,-4,-1,-5], len:0.1,  vol:0.15 },
+  'Nǎi Nai':   { f:262, type:'triangle', trem:9,  gap:0.078, mel:[0,2,-1,3,0,-2],  len:0.08,  vol:0.12 },
+  'Granny Zhu':{ f:288, type:'triangle', trem:11, gap:0.072, mel:[0,3,1,4,-1],     len:0.072, vol:0.12 },
+  'Elder Shan':{ f:138, type:'sine',     gap:0.088, mel:[0,-1,-3,1,-2],  len:0.085, vol:0.15 },
+  'Old Wen':   { f:122, type:'sine',     gap:0.098, mel:[0,-2,-1,-4],    len:0.09,  vol:0.14 },
+  'Captain Yu':{ f:152, type:'square',   lp:900, gap:0.075, mel:[0,1,-2,0,-3], len:0.06, vol:0.09 },
+  'Uncle Bo':  { f:178, type:'triangle', gap:0.066, mel:[0,2,0,-2,1],    len:0.07,  vol:0.12 },
+  'Auntie Hua':{ f:242, type:'triangle', gap:0.06,  mel:[0,3,1,-1,4,0],  len:0.065, vol:0.11 },
+  'Baker Fang':{ f:196, type:'triangle', gap:0.055, mel:[0,4,2,5,0,3],   len:0.06,  vol:0.12 },
+  'Mei':       { f:368, type:'sine',     gap:0.052, mel:[0,4,2,7,3,5],   len:0.055, vol:0.11 },
+  'Ma':        { f:258, type:'sine',     gap:0.065, mel:[0,2,-1,3],      len:0.07,  vol:0.11 },
+  'Ba':        { f:158, type:'triangle', gap:0.072, mel:[0,-2,1,-3],     len:0.07,  vol:0.12 },
+  '':          { f:205, type:'sine',     gap:0.11,  mel:[0,0,-1],        len:0.06,  vol:0.07 },
 };
-const PLAYER_VOICE = { p:1.2, r:1.05, f:305, type:'triangle', gap:0.055 };
+const PLAYER_VOICE = { f:310, type:'triangle', gap:0.056, mel:[0,3,1,5,2], len:0.06, vol:0.12 };
 function voiceFor(who){ return VOICES[who] || (who===G.name ? PLAYER_VOICE : VOICES['Uncle Bo']); }
 
-function voiceBlip(v, i){
+function voiceBlip(v, i, ahead){
   if (!AC || G.muted) return;
-  const jit = 1 + (((i*2654435761)>>>0) % 7 - 3) * 0.035;
-  const f = v.f * jit;
-  const dur = v.sub ? 0.1 : 0.07;
-  const t0 = AC.currentTime;
+  const jitter = ((((i*2654435761)>>>0) % 100) / 100 - 0.5) * 0.8;   // ± ~0.4 semitone
+  const semi = v.mel[i % v.mel.length] + jitter;
+  const f = v.f * Math.pow(2, semi/12);
+  // pitch contour: rise into "?", fall into "." or "!", else drift toward next melody note
+  let dir = (v.mel[(i+1) % v.mel.length] - v.mel[i % v.mel.length]) * 0.4;
+  if (ahead && ahead.indexOf('?') >= 0) dir = 3.4;
+  else if (ahead && (ahead.indexOf('.') >= 0 || ahead.indexOf('!') >= 0)) dir = -3.2;
+  const f2 = f * Math.pow(2, dir/12);
+  const t0 = AC.currentTime, dur = v.len;
   const o = AC.createOscillator(); o.type = v.type;
-  o.frequency.setValueAtTime(f*1.06, t0);
-  o.frequency.linearRampToValueAtTime(f*0.94, t0+dur);
+  o.frequency.setValueAtTime(f, t0);
+  o.frequency.linearRampToValueAtTime(f2, t0+dur);
+  if (v.trem){                                    // aged warble
+    const lfo = AC.createOscillator(); lfo.frequency.value = v.trem;
+    const lg = AC.createGain(); lg.gain.value = f*0.035;
+    lfo.connect(lg); lg.connect(o.frequency); lfo.start(t0); lfo.stop(t0+dur+0.02);
+  }
   const g = AC.createGain();
   g.gain.setValueAtTime(0.0001, t0);
-  g.gain.linearRampToValueAtTime(v.sub?0.2:0.13, t0+0.012);
+  g.gain.linearRampToValueAtTime(v.vol, t0+0.008);
   g.gain.exponentialRampToValueAtTime(0.001, t0+dur);
-  let dest = masterGain;
-  if (v.lp){ const flt = AC.createBiquadFilter(); flt.type='lowpass'; flt.frequency.value = v.lp; g.connect(flt); flt.connect(masterGain); o.connect(g); }
-  else { o.connect(g); g.connect(masterGain); }
+  if (v.lp){
+    const flt = AC.createBiquadFilter(); flt.type='lowpass'; flt.frequency.value = v.lp;
+    o.connect(g); g.connect(flt); flt.connect(masterGain);
+  } else { o.connect(g); g.connect(masterGain); }
   o.start(t0); o.stop(t0+dur+0.02);
-  if (v.sub){
-    const s2 = AC.createOscillator(); s2.type='sine'; s2.frequency.value = f/2;
-    const g2 = AC.createGain(); g2.gain.setValueAtTime(0.16, t0);
+  if (v.sub){                                     // dragon body
+    const s2 = AC.createOscillator(); s2.type='sine';
+    s2.frequency.setValueAtTime(f/2, t0);
+    s2.frequency.linearRampToValueAtTime(f2/2, t0+dur*1.3);
+    const g2 = AC.createGain(); g2.gain.setValueAtTime(0.15, t0);
     g2.gain.exponentialRampToValueAtTime(0.001, t0+dur*1.3);
     s2.connect(g2); g2.connect(masterGain); s2.start(t0); s2.stop(t0+dur*1.3+0.02);
   }
-  if (v.warble){
-    const w = AC.createOscillator(); w.type = v.type; w.frequency.value = f*1.045;
-    const g3 = AC.createGain(); g3.gain.setValueAtTime(0.0001, t0+0.03);
-    g3.gain.linearRampToValueAtTime(0.08, t0+0.042);
-    g3.gain.exponentialRampToValueAtTime(0.001, t0+0.09);
-    w.connect(g3); g3.connect(masterGain); w.start(t0+0.03); w.stop(t0+0.1);
-  }
 }
-
-/* read-aloud (browser speech), pitched per character */
-function speakLine(who, text){
-  try{
-    if (!G.voiceRead || G.muted || !window.speechSynthesis) return;
-    speechSynthesis.cancel();
-    const v = voiceFor(who);
-    const clean = String(text).replace(/[…]/g,'.').replace(/[—–]/g,', ').replace(/[✓✕▼✦❯]/g,'').replace(/\([^)]*\)/g, who? '' : '$&');
-    if (!clean.trim()) return;
-    const u = new SpeechSynthesisUtterance(clean);
-    u.pitch = clamp(v.p, 0, 2); u.rate = clamp(v.r, 0.5, 2); u.volume = 0.85;
-    u.lang = 'en-US';
-    speechSynthesis.speak(u);
-  }catch(e){}
-}
-function stopSpeak(){ try{ if (window.speechSynthesis) speechSynthesis.cancel(); }catch(e){} }
 /* ============================================================
    ART — everything is drawn in code, pixel-style
    ============================================================ */
@@ -2292,20 +2294,20 @@ const DLG = { active:false, queue:[], line:null, chars:0, onDone:null, choice:nu
 function say(entries, onDone){
   DLG.queue = entries.slice(); DLG.onDone = onDone || null;
   DLG.active = true; DLG.choice = null;
+  if (typeof duckMusic==='function') duckMusic(true);
   dlgNext();
 }
 function dlgNext(){
   const e = DLG.queue.shift();
   if (!e){
     DLG.active = false; DLG.line = null;
-    if (typeof stopSpeak==='function') stopSpeak();
+    if (typeof duckMusic==='function') duckMusic(false);
     const cb = DLG.onDone; DLG.onDone = null;
     if (cb) cb();
     return;
   }
   if (e.choice){ DLG.choice = e; DLG.sel = 0; DLG.line = null; SFX.blip(); return; }
   DLG.line = e; DLG.chars = 0; DLG.blipT = 0; DLG.blipI = 0;
-  if (typeof speakLine==='function') speakLine(e.who||'', e.text);
 }
 function dlgUpdate(dt){
   if (DLG.choice){
@@ -2323,14 +2325,18 @@ function dlgUpdate(dt){
   }
   if (!DLG.line) return;
   DLG.chars += dt*50;
-  // character voice babble while the text types out
+  // Celeste-style voice blips while the text types out
   if (DLG.chars < DLG.line.text.length){
     const v = voiceFor(DLG.line.who||'');
     DLG.blipT = (DLG.blipT||0) + dt;
     if (DLG.blipT >= (v.gap||0.06)){
-      DLG.blipT = 0;
-      const ch2 = DLG.line.text[Math.floor(DLG.chars)] || ' ';
-      if (ch2 !== ' ' && ch2 !== '.') voiceBlip(v, DLG.blipI = (DLG.blipI||0)+1);
+      const idx = Math.floor(DLG.chars);
+      const ch2 = DLG.line.text[idx] || ' ';
+      if (',.!?…'.indexOf(ch2) >= 0){ DLG.blipT = -0.09; }          // breath pause
+      else if (ch2 !== ' '){
+        DLG.blipT = 0;
+        voiceBlip(v, DLG.blipI = (DLG.blipI||0)+1, DLG.line.text.slice(idx+1, idx+4));
+      } else DLG.blipT = 0;
     }
   }
   if (just.a){
@@ -3077,7 +3083,7 @@ const titleScene = {
       if (i===this.sel){ T('❯', LW/2-textW(o,7)/2-10, y, 7, '#f2b632','left'); }
       Tsh(o, LW/2, y, 7, i===this.sel?'#ffe9b0':'#b8a88e', 'center');
     });
-    T('ARROWS/WASD move · ✓=Z/SPACE/ENTER · ✕=X · J journal · M mute · V voice', LW/2, 170, 4.6, '#8a7c6a', 'center');
+    T('ARROWS/WASD move · ✓=Z/SPACE/ENTER · ✕=X · J journal · M mute', LW/2, 170, 4.6, '#8a7c6a', 'center');
     drawFade();
   }
 };
@@ -3285,19 +3291,12 @@ function makeChapterCard(ch, onDone){
 /* ---------- story cutscenes (illustrated pages) ---------- */
 function makeStory(pages, onDone){
   let idx=0, t=0;
-  const narrate = ()=>{
-    const pg = pages[idx]; if (!pg) return;
-    const mm = pg.text.match(/^([^:"]+):/);
-    if (typeof speakLine==='function') speakLine(mm ? mm[1].trim() : '', pg.text);
-  };
   return {
-    enter(){ narrate(); },
     update(dt){
       t+=dt; updateFade(dt);
       if (just.a && t>0.5){
         SFX.blip(); idx++; t=0;
-        if (idx>=pages.length){ popScene(); if (typeof stopSpeak==='function') stopSpeak(); onDone(); }
-        else narrate();
+        if (idx>=pages.length){ popScene(); onDone(); }
       }
     },
     render(){
@@ -3696,53 +3695,203 @@ function chapterTick(dt){
   }
 }
 
-/* ---------- the Nian battle (timing minigame with a big scene) ---------- */
+/* ---------- the NIAN BOSS FIGHT ---------- */
+function roarSfx(){ noiseHit(0.5, 0.5, true); tone(60, 0.5, 'sawtooth', 0.35); tone(45, 0.6, 'sine', 0.4); }
 function makeNianBattle(){
-  let fledT = -1;
-  const cfg = {
-    title:'NIAN AT THE GATES', flavor:'Red! Light! Noise!',
-    roundLabels:['Unfurl the RED banners!','Light EVERY lantern!','FIRECRACKERS! NOW!'],
-    speeds:[2.0,2.6,3.2], zones:[34,26,20],
-    doneTitle:'GUO NIAN!', doneLine:'The beast flees! You have "passed over" the year!',
-    onHit(r){ SFX.boom(); if (r>=3) SFX.win(); },
-    drawScene(progress, t, done){
+  const st = {
+    hp:6, maxHp:6, hearts:3,
+    event:'intro', evT:0, t:0, si:0,
+    nianX:64, lunge:0, fledT:-1,
+    sliderT:0, dodgeDir:null, dodged:false, wrong:false,
+    unheldT:0, canHit:false,
+    msg:'', msgT:0, msgC:'#ffe9b0',
+    shake:0, flash:0, pflash:0,
+  };
+  window.BOSS = st;
+  const phase = ()=> st.hp>4 ? 1 : st.hp>2 ? 2 : 3;
+  const SPEED = {1:2.2, 2:2.7, 3:3.3}, ZONE = {1:30, 2:24, 3:17};
+  const WARN  = {1:1.15, 2:0.9, 3:0.7};
+  const SCRIPTS = {
+    1:['attack','roar','attack','roar'],
+    2:['attack','roar','pounce','attack','pounce','roar'],
+    3:['roar','pounce','attack','pounce','roar','attack'],
+  };
+  function say2(m, c){ st.msg = m; st.msgT = 0.9; st.msgC = c || '#ffe9b0'; }
+  function next(){
+    const sc = SCRIPTS[phase()];
+    st.event = sc[st.si % sc.length]; st.si++;
+    st.evT = 0; st.sliderT = 0; st.dodged = false; st.wrong = false; st.unheldT = 0;
+    if (st.event==='roar') st.event = 'roarWarn';
+    if (st.event==='pounce'){ st.event = 'pounceWarn'; st.dodgeDir = ((st.si*2654435761)>>>0)%2 ? 'left' : 'right'; }
+  }
+  function hurt(){
+    st.hearts--; st.pflash = 0.5; st.shake = 0.5;
+    SFX.bad(); noiseHit(0.3, 0.4, true);
+    if (st.hearts <= 0){ st.event = 'lose'; st.evT = 0; }
+  }
+  function damage(){
+    st.hp--; st.flash = 0.35; st.nianX = Math.max(40, st.nianX - 9);
+    SFX.boom(); burst(st.nianX+14, 120, ['#ff5838','#f2b632','#ffe98a'], 30, 70);
+    const ph = phase();
+    if (st.hp > 0 && (st.hp===4 || st.hp===2)){
+      SFX.gong(); st.si = 0;
+      say2(st.hp===4 ? 'NIAN IS FURIOUS!' : 'FINAL STAND!', '#ff8a70');
+      st.shake = 0.7;
+    }
+    if (st.hp <= 0){
+      st.event = 'win'; st.evT = 0; st.fledT = -1;
+      playMusic(1); SFX.win();
+    }
+  }
+  return {
+    enter(){ playMusic(4); },
+    update(dt){
+      st.t += dt; st.evT += dt;
+      st.msgT = Math.max(0, st.msgT - dt);
+      st.shake = Math.max(0, st.shake - dt);
+      st.flash = Math.max(0, st.flash - dt);
+      st.pflash = Math.max(0, st.pflash - dt);
+      updateParts(dt);
+      const ph = phase();
+      st.canHit = false;
+      switch (st.event){
+        case 'intro':
+          if (st.evT > 1.4){ say2('RED! LIGHT! NOISE!'); next(); }
+          break;
+        case 'attack': {
+          st.sliderT += dt;
+          const pos = Math.sin(st.sliderT * SPEED[ph]) * 100;
+          st.canHit = Math.abs(pos) < ZONE[ph]/2;
+          if (just.a){
+            if (st.canHit) damage();
+            else { say2('Missed!', '#ff8a70'); st.nianX = Math.min(150, st.nianX + 6); SFX.bad(); }
+          }
+          if (st.evT > 7) next();          // don't stall forever
+          break;
+        }
+        case 'roarWarn':
+          if (st.evT > WARN[ph]){ st.event = 'roarActive'; st.evT = 0; roarSfx(); st.shake = 0.4; }
+          break;
+        case 'roarActive':
+          if (!keys.a) st.unheldT += dt;
+          if (st.unheldT > 0.15){ say2('The roar knocks you back!', '#ff8a70'); hurt(); if (st.event!=='lose') next(); break; }
+          if (st.evT > 0.9){ say2('Blocked!', '#7ce87c'); SFX.good(); next(); }
+          break;
+        case 'pounceWarn':
+          if (just.left || just.right){
+            const pressed = just.left ? 'left' : 'right';
+            if (pressed === st.dodgeDir){ st.dodged = true; }
+            else st.wrong = true;
+          }
+          if (st.evT > WARN[ph]){ st.event = 'pounceGo'; st.evT = 0; noiseHit(0.2, 0.4); }
+          break;
+        case 'pounceGo':
+          st.lunge = Math.sin(Math.min(st.evT/0.4, 1) * Math.PI) * (170 - st.nianX);
+          if (st.evT > 0.42){
+            st.lunge = 0;
+            if (st.dodged && !st.wrong){ say2('Dodged!', '#7ce87c'); SFX.good(); }
+            else { say2('Pounced!', '#ff8a70'); hurt(); }
+            if (st.event !== 'lose') next();
+          }
+          break;
+        case 'win':
+          if (st.fledT < 0) st.fledT = st.t;
+          if (Math.random() < 0.12) burst(rnd(60,260), rnd(40,110), ['#ff5838','#f2b632','#7ce87c','#cfe4f4'], 16, 60);
+          if (st.evT > 2.2){
+            popScene();
+            say([
+              {who:'Elder Shan', port:port('elder'), text:"GUO NIAN! WE HAVE PASSED THE YEAR! Ha-HA! Did you SEE it run?!"},
+              {who:'Lóng', port:LONG_PORTRAIT, text:"Six firecrackers, three roars, and not one step back. The beast won't return for a whole year — and when it does, we'll be ready. We ALWAYS are."},
+              {who:'Elder Shan', port:port('elder'), text:"Find me at the tea house, child. Dawn brings one more tradition — the sweetest one of all."},
+            ], ()=> setStep(6));
+          }
+          break;
+        case 'lose':
+          if (just.a && st.evT > 0.8){
+            st.hp = st.maxHp; st.hearts = 3; st.nianX = 64; st.si = 0;
+            st.event = 'intro'; st.evT = 0; say2('');
+          }
+          break;
+      }
+    },
+    render(){
+      const shx = st.shake > 0 ? Math.round(Math.sin(st.t*70) * st.shake * 4) : 0;
+      cx.save(); cx.translate(shx*P, 0);
+      // night sky + ground
       R(0,0,LW,LH,'#10102a');
       for(let i=0;i<30;i++){ const h=thash(i,5); R(h*LW, thash(i,11)*60, 1.2, 1.2, '#8a8ab4'); }
       R(0,150,LW,30,'#1c1830');
-      // tea house backdrop (kept high so the timing bar stays clear)
       drawHouse({x:110,y:58,w:78,ht:34,door:32,sign:'TEA HOUSE'},
-        {couplets:progress>=1, fu:progress>=1, lanterns:true, lit:progress>=2});
-      if (progress>=1){ R(98,62,6,28,'#d43424'); R(216,62,6,28,'#d43424'); }
-      if (progress>=2){ drawLantern(56,52,1.2,true,t); drawLantern(264,52,1.2,true,t+1);
-        glow(56,62,16,'#ffaa50',0.3); glow(264,62,16,'#ffaa50',0.3); }
+        {couplets:true, fu:true, lanterns:true, lit:true});
       // villagers huddle right
-      drawPerson(268,148,{...port('elder'), dir:'left'},t);
-      drawPerson(288,152,{...port('mei'), dir:'left'},t);
-      drawPerson(300,146,{...port('hua'), dir:'left'},t);
-      // you, standing your ground
-      drawPerson(240,152,{...playerLook(), dir:'left'},t);
+      drawPerson(272,146,{...port('elder'), dir:'left'},st.t);
+      drawPerson(292,150,{...port('mei'), dir:'left'},st.t);
+      drawPerson(304,144,{...port('hua'), dir:'left'},st.t);
+      // you, standing your ground (flash white when hurt)
+      drawPerson(240,152,{...playerLook(), dir:'left'},st.t);
+      if (st.pflash>0 && Math.sin(st.t*40)>0){ cx.globalAlpha=0.55; R(232,132,16,21,'#ffffff'); cx.globalAlpha=1; }
+      // raised banner while holding block
+      if ((st.event==='roarWarn' || st.event==='roarActive') && keys.a){
+        R(226,124,3,30,'#6a4a34');
+        R(212,120,16,22,'#2b1a26'); R(213,121,14,20,'#d43424'); R(214,122,3,18,'#f06848');
+        hanzi('福', 220, 131, 8, '#f2b632');
+      }
       // NIAN
-      if (done){
-        if (fledT<0) fledT = t;
-        const fx = 60 - (t-fledT)*90;
-        if (fx > -80) drawNian(fx, 150, t*3);
-        if (Math.random()<0.1) burst(rnd(60,260), rnd(40,100), ['#ff5838','#f2b632','#7ce87c','#cfe4f4'], 16, 60);
+      if (st.event==='win'){
+        const fx = st.nianX - (st.t - st.fledT)*110;
+        if (fx > -80) drawNian(fx, 150, st.t*3);
       } else {
-        const shake = progress>0 ? Math.sin(t*30)*progress : 0;
-        drawNian(64 - progress*16 + shake, 150, t);
-        T('GRRRRRAAAAAH!', 70, 96, 6, '#ff5030');
+        drawNian(st.nianX + st.lunge, 150, st.t);
+        if (st.flash>0 && Math.sin(st.t*50)>0){ cx.globalAlpha=0.4; R(st.nianX-28, 108, 60, 44, '#ffffff'); cx.globalAlpha=1; }
       }
       drawParts(0,0);
+      cx.restore();
+      // header + HUD
+      mgHeader('NIAN AT THE GATES', 'a real boss. good luck.');
+      // Nian HP
+      T('NIAN', 10, 30, 5.4, '#ff8a70');
+      R(34, 30, 92, 7, 'rgba(20,12,16,0.85)');
+      R(34, 30, 92, 1, '#6a5a48'); R(34, 36, 92, 1, '#6a5a48');
+      for (let i=0;i<st.maxHp;i++) R(35.5+i*15, 31.2, 13.5, 4.6, i < st.hp ? '#e03c28' : '#3a2328');
+      // your lanterns
+      for (let i=0;i<3;i++) drawLantern(288+i*11, 27, 0.8, i < st.hearts, st.t);
+      // event UI
+      if (st.event==='attack'){
+        const pos = Math.sin(st.sliderT * SPEED[phase()]) * 100;
+        T('FIRECRACKER! press ✓ in the RED zone!', LW/2, 96, 6, '#ffe9b0','center');
+        R(52, 108, 216, 12, 'rgba(20,12,16,0.85)');
+        R(52, 108, 216, 1, '#c8a860'); R(52, 119, 216, 1, '#c8a860');
+        const zw = ZONE[phase()]*216/200;
+        R(160-zw/2, 108, zw, 12, 'rgba(242,60,40,0.6)');
+        R(160+pos*1.08-1.5, 104, 3, 20, '#ffffff');
+      } else if (st.event==='roarWarn'){
+        const bl = Math.sin(st.t*12)>0;
+        T('ROAR INCOMING!', LW/2, 96, 8, bl?'#ff5030':'#ffe9b0','center');
+        T('HOLD ✓ to raise the red banner!', LW/2, 110, 6, '#ffe9b0','center');
+      } else if (st.event==='roarActive'){
+        T('HOLD ON!', LW/2, 96, 8, '#ff8a70','center');
+        glow(st.nianX+14, 118, 30, '#ff5030', 0.25);
+      } else if (st.event==='pounceWarn'){
+        const bl = Math.sin(st.t*12)>0;
+        T('NIAN POUNCES!', LW/2, 92, 8, bl?'#ff5030':'#ffe9b0','center');
+        T('DODGE: press '+(st.dodgeDir==='left'?'◀':'▶')+' !', LW/2, 106, 7.4, '#ffe9b0','center');
+        if (st.dodged) T('ready…', LW/2, 118, 5.4, '#7ce87c','center');
+      } else if (st.event==='intro'){
+        T('NIAN ATTACKS THE VILLAGE!', LW/2, 96, 8, '#ff8a70','center');
+      } else if (st.event==='win'){
+        box(46,58,228,44);
+        T('GUO NIAN!', LW/2, 65, 9, '#f2b632','center');
+        T('You have passed over the year!', LW/2, 80, 6, '#f4e8d0','center');
+      } else if (st.event==='lose'){
+        box(36,54,248,56);
+        T('THE VILLAGE HIDES…', LW/2, 61, 8.4, '#ff8a70','center');
+        T('Nian prowls until you stand again.', LW/2, 76, 5.8, '#f4e8d0','center');
+        T('✓ TRY AGAIN', LW/2, 90, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+      }
+      if (st.msgT>0) T(st.msg, LW/2, 132, 7, st.msgC, 'center');
+      T('Phase '+phase()+' / 3', 292, 168, 5, '#8a7c6a','center');
     }
   };
-  const scene = makeTiming(cfg, ()=>{
-    say([
-      {who:'Elder Shan', port:port('elder'), text:"GUO NIAN! WE HAVE PASSED THE YEAR! Ha-HA! Did you SEE it run?!"},
-      {who:'Lóng', port:LONG_PORTRAIT, text:"It won't dare come back for a whole year. And when it does — we'll be ready. We always are. THAT is why the New Year is loud and red."},
-      {who:'Elder Shan', port:port('elder'), text:"Find me at the tea house, child. Dawn brings one more tradition — the sweetest one of all."},
-    ], ()=> setStep(6));
-  });
-  return scene;
 }
 
 /* ---------- ceremonies ---------- */
@@ -4090,7 +4239,7 @@ function getInteractables(){
    BOOT
    ============================================================ */
 window.addEventListener('contextmenu', e=> e.preventDefault());
-(function(){ const sv = loadGame(); if (sv){ G.muted = !!sv.muted; if (sv.voiceRead!==undefined) G.voiceRead = !!sv.voiceRead; } })();
+(function(){ const sv = loadGame(); if (sv){ G.muted = !!sv.muted; } })();
 pushScene(titleScene);
 requestAnimationFrame(frame);
 </script>
