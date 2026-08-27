@@ -1,0 +1,2593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Festival Quest</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; }
+  body {
+    background:#0c0a14;
+    display:flex; align-items:center; justify-content:center;
+    font-family:"Courier New", monospace;
+    touch-action:none;
+    -webkit-user-select:none; user-select:none;
+  }
+  #wrap { position:relative; }
+  canvas {
+    display:block;
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+    background:#0c0a14;
+    cursor:pointer;
+  }
+  /* touch controls */
+  #touch { position:fixed; inset:0; pointer-events:none; display:none; z-index:5; }
+  body.touchmode #touch { display:block; }
+  .tbtn {
+    position:absolute; pointer-events:auto;
+    background:rgba(244,232,208,0.10);
+    border:2px solid rgba(244,232,208,0.35);
+    border-radius:12px;
+    color:rgba(244,232,208,0.8);
+    font-family:"Courier New",monospace; font-weight:bold; font-size:20px;
+    display:flex; align-items:center; justify-content:center;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .tbtn:active { background:rgba(242,182,50,0.35); }
+  #t-up    { left:74px;  bottom:118px; width:56px; height:52px; }
+  #t-down  { left:74px;  bottom:14px;  width:56px; height:52px; }
+  #t-left  { left:14px;  bottom:62px;  width:56px; height:52px; }
+  #t-right { left:134px; bottom:62px;  width:56px; height:52px; }
+  #t-a { right:20px; bottom:64px; width:72px; height:72px; border-radius:50%; font-size:26px;
+         background:rgba(224,60,40,0.25); border-color:rgba(224,60,40,0.6); }
+  #t-b { right:104px; bottom:20px; width:58px; height:58px; border-radius:50%;
+         background:rgba(74,144,194,0.2); border-color:rgba(74,144,194,0.55); }
+  #t-j { right:20px; top:16px; width:52px; height:44px; font-size:22px; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" width="960" height="540"></canvas></div>
+<div id="touch">
+  <div class="tbtn" id="t-up">▲</div>
+  <div class="tbtn" id="t-down">▼</div>
+  <div class="tbtn" id="t-left">◀</div>
+  <div class="tbtn" id="t-right">▶</div>
+  <div class="tbtn" id="t-a">✓</div>
+  <div class="tbtn" id="t-b">✕</div>
+  <div class="tbtn" id="t-j">📜</div>
+</div>
+<script>
+'use strict';
+/* ============================================================
+   FESTIVAL QUEST — a Family Heritage Project game
+   A journey through three traditional Chinese festivals:
+   Lunar New Year, the Dragon Boat Festival, and Mid-Autumn.
+   ============================================================ */
+
+/* ---------- core constants ---------- */
+const LW = 320, LH = 180;         // logical resolution
+const P  = 3;                     // pixel scale (canvas is 960x540)
+const cv = document.getElementById('game');
+const cx = cv.getContext('2d');
+cx.imageSmoothingEnabled = false;
+
+/* fit canvas to window, preserving 16:9 */
+function fitCanvas(){
+  const aw = window.innerWidth, ah = window.innerHeight;
+  let w = aw, h = aw * (LH/LW);
+  if (h > ah){ h = ah; w = ah * (LW/LH); }
+  cv.style.width  = Math.floor(w) + 'px';
+  cv.style.height = Math.floor(h) + 'px';
+}
+window.addEventListener('resize', fitCanvas); fitCanvas();
+
+/* ---------- tiny utils ---------- */
+const clamp = (v,a,b)=> v<a?a : v>b?b : v;
+const lerp  = (a,b,t)=> a+(b-a)*t;
+const dist  = (x1,y1,x2,y2)=> Math.hypot(x2-x1, y2-y1);
+const rnd   = (a=1,b)=> b===undefined ? Math.random()*a : a+Math.random()*(b-a);
+const irnd  = (a,b)=> Math.floor(rnd(a,b+1));
+const pick  = arr => arr[Math.floor(Math.random()*arr.length)];
+
+/* ---------- game state ---------- */
+const G = {
+  name: 'You',
+  ch: 0,          // 0 = intro-home, 1..3 festivals, 4 = done
+  step: 0,        // quest step within chapter
+  scrolls: [],    // ids of collected wisdom scrolls
+  flags: {},
+  muted: false,
+  time: 0,        // global animation clock (seconds)
+  night: 0,       // 0 day .. 1 night (world tint)
+};
+
+function saveGame(){
+  try{
+    localStorage.setItem('festivalquest_save', JSON.stringify({
+      name:G.name, ch:G.ch, step:G.step, scrolls:G.scrolls, muted:G.muted
+    }));
+  }catch(e){}
+}
+function loadGame(){
+  try{
+    const d = JSON.parse(localStorage.getItem('festivalquest_save'));
+    if (d && typeof d.ch === 'number'){ return d; }
+  }catch(e){}
+  return null;
+}
+function clearSave(){ try{ localStorage.removeItem('festivalquest_save'); }catch(e){} }
+
+/* ---------- input ---------- */
+const keys = {};       // held
+const just = {};       // pressed this frame
+const KEYMAP = {
+  ArrowUp:'up', KeyW:'up', ArrowDown:'down', KeyS:'down',
+  ArrowLeft:'left', KeyA:'left', ArrowRight:'right', KeyD:'right',
+  KeyZ:'a', Space:'a', Enter:'a',
+  KeyX:'b', Escape:'b',
+  KeyJ:'journal', KeyM:'mute'
+};
+window.addEventListener('keydown', e=>{
+  const k = KEYMAP[e.code];
+  audioUnlock();
+  if (typingMode){ handleTyping(e); e.preventDefault(); return; }
+  if (k){ if(!keys[k]) just[k]=true; keys[k]=true; e.preventDefault(); }
+});
+window.addEventListener('keyup', e=>{
+  const k = KEYMAP[e.code];
+  if (k){ keys[k]=false; e.preventDefault(); }
+});
+/* touch buttons */
+function bindBtn(id, name){
+  const el = document.getElementById(id);
+  const on  = e=>{ e.preventDefault(); audioUnlock(); if(!keys[name]) just[name]=true; keys[name]=true; };
+  const off = e=>{ e.preventDefault(); keys[name]=false; };
+  el.addEventListener('pointerdown', on);
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
+  el.addEventListener('pointerleave', off);
+}
+bindBtn('t-up','up'); bindBtn('t-down','down'); bindBtn('t-left','left');
+bindBtn('t-right','right'); bindBtn('t-a','a'); bindBtn('t-b','b'); bindBtn('t-j','journal');
+window.addEventListener('touchstart', ()=> document.body.classList.add('touchmode'), {passive:true});
+
+/* taps on the canvas act as "A" and report a logical position */
+let tapPos = null;
+cv.addEventListener('pointerdown', e=>{
+  audioUnlock();
+  const r = cv.getBoundingClientRect();
+  tapPos = { x:(e.clientX-r.left)/r.width*LW, y:(e.clientY-r.top)/r.height*LH };
+  just.a = true;
+});
+
+/* ---------- text helpers ---------- */
+const FONT = '"Courier New", monospace';
+function T(str, x, y, size=7, color='#f4e8d0', align='left', bold=true){
+  cx.font = (bold?'bold ':'') + (size*P) + 'px ' + FONT;
+  cx.textAlign = align; cx.textBaseline = 'top';
+  cx.fillStyle = color;
+  cx.fillText(str, x*P, y*P);
+}
+function Tsh(str, x, y, size=7, color='#f4e8d0', align='left', shadow='rgba(0,0,0,0.55)'){
+  cx.font = 'bold ' + (size*P) + 'px ' + FONT;
+  cx.textAlign = align; cx.textBaseline = 'top';
+  cx.fillStyle = shadow; cx.fillText(str, x*P+P, y*P+P);
+  cx.fillStyle = color;  cx.fillText(str, x*P, y*P);
+}
+function textW(str, size=7){
+  cx.font = 'bold ' + (size*P) + 'px ' + FONT;
+  return cx.measureText(str).width / P;
+}
+function wrap(str, maxW, size=7){
+  const words = String(str).split(' ');
+  const lines = []; let line = '';
+  for (const w of words){
+    const test = line ? line + ' ' + w : w;
+    if (textW(test, size) > maxW && line){ lines.push(line); line = w; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/* ---------- rectangles & boxes ---------- */
+function R(x,y,w,h,color){ cx.fillStyle=color; cx.fillRect(Math.round(x*P),Math.round(y*P),Math.round(w*P),Math.round(h*P)); }
+function box(x,y,w,h, opts={}){
+  const bg = opts.bg || 'rgba(20,12,16,0.94)';
+  const border = opts.border || '#f2b632';
+  R(x-1,y-1,w+2,h+2, border);
+  R(x,y,w,h, bg);
+  // corner studs
+  const c = opts.stud || '#e03c28';
+  R(x-1,y-1,2,2,c); R(x+w-1,y-1,2,2,c); R(x-1,y+h-1,2,2,c); R(x+w-1,y+h-1,2,2,c);
+}
+
+/* ---------- particles ---------- */
+let parts = [];
+function spawnPart(p){ parts.push(p); if (parts.length>400) parts.splice(0, parts.length-400); }
+function burst(x,y,colors,n=26,spd=60){
+  for(let i=0;i<n;i++){
+    const a = rnd(Math.PI*2), s = rnd(spd*0.3, spd);
+    spawnPart({x,y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:rnd(0.5,1.1), t:0,
+      c:pick(colors), g:34, sz:rnd(1,2.4)});
+  }
+}
+function updateParts(dt){
+  for (const p of parts){ p.t+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=(p.g||0)*dt; }
+  parts = parts.filter(p=> p.t < p.life);
+}
+function drawParts(camx=0, camy=0){
+  for (const p of parts){
+    cx.globalAlpha = clamp(1 - p.t/p.life, 0, 1);
+    R(p.x-camx, p.y-camy, p.sz, p.sz, p.c);
+  }
+  cx.globalAlpha = 1;
+}
+
+/* ---------- audio (WebAudio, all generated) ---------- */
+let AC = null, masterGain = null, musicGain = null, musicTimer = null, musicChapter = -1;
+function audioUnlock(){
+  if (!AC){
+    try{
+      AC = new (window.AudioContext||window.webkitAudioContext)();
+      masterGain = AC.createGain(); masterGain.gain.value = G.muted?0:0.5; masterGain.connect(AC.destination);
+      musicGain = AC.createGain(); musicGain.gain.value = 0.42; musicGain.connect(masterGain);
+    }catch(e){}
+  }
+  if (AC && AC.state==='suspended') AC.resume();
+}
+function setMuted(m){ G.muted=m; if (masterGain) masterGain.gain.value = m?0:0.5; saveGame(); }
+function tone(freq, dur=0.12, type='triangle', vol=0.5, when=0, dest){
+  if (!AC) return;
+  const t0 = AC.currentTime + when;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+  o.connect(g); g.connect(dest||masterGain);
+  o.start(t0); o.stop(t0+dur+0.02);
+}
+function noiseHit(dur=0.2, vol=0.5, low=false){
+  if (!AC) return;
+  const n = AC.sampleRate*dur, buf = AC.createBuffer(1, n, AC.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<n;i++) d[i] = (Math.random()*2-1)*(1-i/n);
+  const s = AC.createBufferSource(); s.buffer = buf;
+  const g = AC.createGain(); g.gain.value = vol;
+  if (low){ const f = AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=300; s.connect(f); f.connect(g); }
+  else s.connect(g);
+  g.connect(masterGain); s.start();
+}
+const SFX = {
+  blip(){ tone(660,0.05,'square',0.12); },
+  select(){ tone(523,0.07,'square',0.2); tone(784,0.09,'square',0.2,0.06); },
+  back(){ tone(392,0.08,'square',0.15); },
+  scroll(){ [523,659,784,1047].forEach((f,i)=> tone(f,0.14,'triangle',0.3,i*0.09)); },
+  good(){ tone(659,0.09,'triangle',0.35); tone(988,0.14,'triangle',0.35,0.08); },
+  bad(){ tone(196,0.2,'sawtooth',0.2); },
+  boom(){ noiseHit(0.35,0.6); tone(80,0.3,'sine',0.5); },
+  drum(){ noiseHit(0.12,0.35,true); tone(70,0.18,'sine',0.7); },
+  gong(){ tone(196,1.6,'sine',0.5); tone(294,1.2,'sine',0.25,0.02); noiseHit(0.4,0.12); },
+  sparkle(){ [1319,1568,2093].forEach((f,i)=> tone(f,0.1,'sine',0.2,i*0.05)); },
+  win(){ [523,659,784,1047,1319].forEach((f,i)=> tone(f,0.22,'triangle',0.35,i*0.11)); },
+};
+
+/* looping pentatonic music — one melody per chapter, guzheng-ish plucks */
+const MELODIES = [
+  // intro/home & title: gentle D pentatonic
+  { bpm:96,  bass:[147,110,131,110], notes:[587,659,880,784,659,587,440,523, 587,659,784,880,1047,880,784,659] },
+  // ch1 New Year: festive
+  { bpm:132, bass:[196,147,175,147], notes:[784,880,1047,880,784,659,587,659, 784,1047,1175,1047,880,784,659,587] },
+  // ch2 Dragon Boat: driving
+  { bpm:120, bass:[110,110,131,131], notes:[440,523,587,523,440,392,330,392, 440,587,659,587,523,440,392,330] },
+  // ch3 Mid-Autumn: moonlit lullaby
+  { bpm:76,  bass:[131,98,110,98],  notes:[523,587,659,784,659,587,523,440, 523,659,587,523,440,392,440,523] },
+];
+function playMusic(idx){
+  if (musicChapter === idx) return;
+  musicChapter = idx;
+  if (musicTimer){ clearInterval(musicTimer); musicTimer = null; }
+  if (idx < 0) return;
+  let step = 0;
+  const play = ()=>{
+    if (!AC) return;
+    const m = MELODIES[idx];
+    const n = m.notes[step % m.notes.length];
+    if (n) { tone(n, 0.34, 'triangle', 0.16, 0, musicGain); tone(n*2, 0.18, 'sine', 0.05, 0, musicGain); }
+    if (step % 4 === 0){ tone(m.bass[(step/4) % m.bass.length], 0.5, 'sine', 0.1, 0, musicGain); }
+    if (idx===2 && step%2===0){ tone(65,0.1,'sine',0.12,0,musicGain); } // boat drums
+    step++;
+  };
+  const m = MELODIES[idx];
+  musicTimer = setInterval(play, Math.round(60000 / m.bpm / 2));
+}
+
+/* ---------- scene manager ---------- */
+const stack = [];
+function pushScene(s){ stack.push(s); if (s.enter) s.enter(); }
+function popScene(){ const s = stack.pop(); if (s && s.exit) s.exit(); }
+function swapScene(s){ while(stack.length) popScene(); pushScene(s); }
+function topScene(){ return stack[stack.length-1]; }
+
+/* ---------- main loop ---------- */
+let lastT = performance.now(), acc = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt = (now - lastT)/1000; lastT = now;
+  if (dt > 0.25) dt = 0.25;
+  G.time += dt;
+  const s = topScene();
+  if (s){
+    if (s.update) s.update(dt);
+    // render from the lowest opaque scene upward (overlays draw on top)
+    let start = stack.length-1;
+    while (start>0 && stack[start].overlay) start--;
+    for (let i=start;i<stack.length;i++) if (stack[i].render) stack[i].render();
+  }
+  for (const k in just) just[k] = false;
+  tapPos = null;
+  if (just.mute) {}
+}
+/* global mute key */
+window.addEventListener('keydown', e=>{ if (e.code==='KeyM' && !typingMode) setMuted(!G.muted); });
+
+/* fade transition helper */
+let fade = { a:0, target:0, speed:2.5, cb:null };
+function fadeOut(cb, speed=2.5){ fade.target = 1; fade.speed = speed; fade.cb = cb; }
+function fadeIn(speed=2.5){ fade.target = 0; fade.speed = speed; fade.cb = null; }
+function updateFade(dt){
+  if (fade.a < fade.target){ fade.a = Math.min(fade.target, fade.a + fade.speed*dt);
+    if (fade.a>=1 && fade.cb){ const c=fade.cb; fade.cb=null; c(); } }
+  else if (fade.a > fade.target){ fade.a = Math.max(fade.target, fade.a - fade.speed*dt); }
+}
+function drawFade(){
+  if (fade.a>0){ cx.globalAlpha = fade.a; R(0,0,LW,LH,'#0c0a14'); cx.globalAlpha = 1; }
+}
+
+/* typing mode (name entry) */
+let typingMode = false;
+let typedName = '';
+function handleTyping(e){
+  if (e.code === 'Backspace'){ typedName = typedName.slice(0,-1); SFX.blip(); return; }
+  if (e.code === 'Enter'){ finishTyping(); return; }
+  if (/^[a-zA-Z0-9]$/.test(e.key) && typedName.length < 8){ typedName += e.key; SFX.blip(); }
+}
+let finishTyping = ()=>{};
+/* ============================================================
+   ART — everything is drawn in code, pixel-style
+   ============================================================ */
+
+const CJK = '"Noto Sans CJK SC","Noto Sans SC","PingFang SC","Microsoft YaHei","SimSun",serif';
+function hanzi(str, x, y, size, color, align='center'){
+  cx.font = (size*P)+'px '+CJK;
+  cx.textAlign = align; cx.textBaseline = 'middle';
+  cx.fillStyle = color; cx.fillText(str, x*P, y*P);
+}
+
+function glow(x,y,r,color,alpha=0.35){
+  const gx = x*P, gy = y*P, gr = r*P;
+  const g = cx.createRadialGradient(gx,gy,1,gx,gy,gr);
+  g.addColorStop(0,color); g.addColorStop(1,'rgba(0,0,0,0)');
+  cx.globalAlpha = alpha; cx.fillStyle = g;
+  cx.fillRect(gx-gr,gy-gr,gr*2,gr*2);
+  cx.globalAlpha = 1;
+}
+function circle(x,y,r,color){
+  cx.fillStyle=color; cx.beginPath();
+  cx.arc(x*P,y*P,r*P,0,Math.PI*2); cx.fill();
+}
+
+/* deterministic per-tile hash for texture specks */
+function thash(a,b){ let h = (a*73856093) ^ (b*19349663); h = (h ^ (h>>13)) * 1274126177; return Math.abs(h % 1000)/1000; }
+
+/* ---------- people (procedural pixel folk) ---------- */
+/* anchor: x = center of feet, y = ground line */
+function drawPerson(x, y, o, t=0){
+  x = Math.round(x); y = Math.round(y);
+  const walking = o.walk;
+  const fr = walking ? Math.floor(t*9)%2 : 0;
+  const child = o.child, elder = o.elder;
+  const legH = child?3:4, torsoH = child?6:7, headH = child?8:7, headW = child?9:8;
+  const bob = (walking && fr===1) ? 1 : 0;
+  const top = o.top||'#c02c20', pants = o.pants||'#3a3a55',
+        skin = o.skin||'#eac086', hair = o.hair||'#181418';
+  // shadow
+  cx.fillStyle='rgba(0,0,0,0.22)';
+  cx.fillRect((x-5)*P,(y-1)*P,10*P,2*P);
+  // legs
+  const lys = y-legH, ll = fr===1?1:0, rl = fr===1?0:1;
+  R(x-4, lys-(walking?ll:0), 3, legH+(walking?ll:0), pants);
+  R(x+1, lys-(walking?rl:0), 3, legH+(walking?rl:0), pants);
+  // torso
+  const ty = y-legH-torsoH-bob;
+  R(x-5, ty, 10, torsoH, top);
+  // simple robe trim for elders
+  if (elder) R(x-5, ty+torsoH-2, 10, 1, '#f2b632');
+  // arms
+  R(x-7, ty+1, 2, torsoH-2, top);
+  R(x+5, ty+1, 2, torsoH-2, top);
+  R(x-7, ty+torsoH-2, 2, 2, skin);
+  R(x+5, ty+torsoH-2, 2, 2, skin);
+  // head
+  const hy = ty-headH+(elder?1:0);
+  R(x-headW/2, hy, headW, headH, skin);
+  // hair
+  if (o.dir==='up'){
+    R(x-headW/2, hy-1, headW, headH-2, hair);
+  } else {
+    R(x-headW/2, hy-1, headW, 3, hair);
+    R(x-headW/2, hy+1, 2, 2, hair);
+    R(x+headW/2-2, hy+1, 2, 2, hair);
+    if (o.buns){ R(x-headW/2-2, hy-1, 3, 3, hair); R(x+headW/2-1, hy-1, 3, 3, hair); }
+    if (o.bun){ R(x-1, hy-3, 3, 3, hair); }
+    // eyes
+    const eyeY = hy+3;
+    if (o.dir==='left'){ R(x-3, eyeY, 2, 2, '#241a14'); }
+    else if (o.dir==='right'){ R(x+1, eyeY, 2, 2, '#241a14'); }
+    else { R(x-3, eyeY, 2, 2, '#241a14'); R(x+1, eyeY, 2, 2, '#241a14'); }
+    if (o.beard){ R(x-2, hy+headH-1, 4, 2, '#e8e4dc'); }  // beard
+    if (o.blush) { R(x-headW/2+1, eyeY+2, 1, 1, '#e8927c'); R(x+headW/2-2, eyeY+2, 1, 1, '#e8927c'); }
+  }
+  if (o.hat){ // straw hat
+    R(x-headW/2-2, hy-1, headW+4, 2, '#c8a860');
+    R(x-2, hy-3, 5, 2, '#c8a860');
+  }
+}
+
+/* ---------- Lóng the paper dragon (follows the player) ---------- */
+function drawLong(x, y, t, flip=false){
+  const dirM = flip?-1:1;
+  // body segments trail behind the head in a sine wave
+  for (let i=5;i>=1;i--){
+    const sx = x - dirM*i*5;
+    const sy = y + Math.sin(t*3 + i*0.9)*2.5;
+    circle(sx, sy, i===5?2:3.2, i%2? '#e03c28' : '#f2b632');
+    if (i%2===0) circle(sx, sy-1, 1.2, '#f8e0a0');
+  }
+  const hy = y + Math.sin(t*3)*2.5;
+  // head
+  R(x-6, hy-4, 12, 8, '#f2b632');
+  R(x-6+(flip?0:8), hy-2, 4, 4, '#f8e0a0');       // snout
+  R(x-2, hy-6, 4, 2, '#e03c28');                   // brow
+  R(x-6, hy-6, 2, 3, '#e03c28'); R(x+4, hy-6, 2, 3, '#e03c28'); // horns
+  R(x+(flip?-4:2), hy-3, 2, 2, '#241a14');         // eye
+  // whiskers
+  R(x+(flip?-9:7), hy+1, 3, 1, '#e03c28');
+  R(x+(flip?-8:6), hy+3, 2, 1, '#e03c28');
+  glow(x, hy, 10, '#f2b632', 0.12);
+}
+
+/* ---------- Nian, the New Year beast ---------- */
+function drawNian(x, y, t){
+  const stomp = Math.abs(Math.sin(t*4))*2;
+  const by = y - stomp;
+  cx.fillStyle='rgba(0,0,0,0.3)'; cx.fillRect((x-24)*P,(y-2)*P,48*P,4*P);
+  // body
+  R(x-22, by-20, 34, 18, '#1e4a44');
+  // shaggy fur spikes
+  for(let i=0;i<8;i++){ R(x-22+i*4, by-24+((i%2)*2), 3, 5, '#2a6058'); }
+  for(let i=0;i<8;i++){ R(x-22+i*4, by-4, 3, 3, '#153833'); }
+  // legs
+  R(x-20, by-4, 6, 5-stomp*0, '#153833'); R(x+2, by-4, 6, 5, '#153833');
+  R(x-19, by, 4, 2, '#e8e4dc'); R(x+3, by, 4, 2, '#e8e4dc'); // claws
+  // head
+  R(x+6, by-30, 22, 18, '#1e4a44');
+  R(x+8, by-33, 4, 5, '#f2b632'); R(x+22, by-33, 4, 5, '#f2b632'); // horns
+  // mane
+  for(let i=0;i<5;i++){ R(x+4, by-30+i*3, 3, 2, i%2?'#e03c28':'#f2742c'); }
+  // eyes (glowing red)
+  const blink = Math.sin(t*7)>0.9?1:3;
+  R(x+11, by-27, 4, blink, '#ff3820'); R(x+20, by-27, 4, blink, '#ff3820');
+  glow(x+13, by-26, 5, '#ff5030', 0.4); glow(x+22, by-26, 5, '#ff5030', 0.4);
+  // snout + fangs
+  R(x+12, by-21, 14, 7, '#2a6058');
+  R(x+13, by-15, 3, 3, '#f8f4ec'); R(x+19, by-15, 3, 3, '#f8f4ec'); R(x+24, by-15, 2, 2, '#f8f4ec');
+  R(x+13, by-19, 12, 2, '#4a1418'); // mouth
+}
+
+/* ---------- buildings & props ---------- */
+function drawRoof(x, y, w, tall=false){
+  const rc='#4a4658', rd='#353248', trim='#a03428';
+  R(x-6, y, w+12, 4, rc);
+  R(x-7, y-1, 3, 3, rd); R(x+w+4, y-1, 3, 3, rd);        // upturned ends
+  R(x-3, y-4, w+6, 4, rc);
+  R(x-1, y-7, w+2, 3, rd);
+  for(let i=0;i<w+12;i+=4) R(x-6+i, y+2, 1, 2, rd);       // tile lines
+  R(x-2, y-8, w+4, 1, trim);
+}
+function drawHouse(h, decor){
+  const {x,y,w,ht} = h;
+  // walls
+  R(x, y, w, ht, '#e8d8b8');
+  R(x, y, 2, ht, '#a03428'); R(x+w-2, y, 2, ht, '#a03428');   // red columns
+  for(let i=10;i<w-6;i+=14) R(x+i, y, 1, ht, '#c9b696');
+  drawRoof(x, y-2, w);
+  // door
+  const dx = x + (h.door!==undefined? h.door : Math.floor(w/2)-5);
+  R(dx, y+ht-13, 11, 13, '#5a3828');
+  R(dx, y+ht-13, 11, 1, '#3a2418'); R(dx+5, y+ht-8, 1, 2, '#f2b632');
+  // windows
+  if (w>30){ drawWindow(x+6, y+5); drawWindow(x+w-14, y+5); }
+  else drawWindow(x+w-14, y+5);
+  // festival decor
+  if (decor && decor.couplets){
+    R(dx-4, y+ht-13, 3, 12, '#d43424'); R(dx+12, y+ht-13, 3, 12, '#d43424');
+    R(dx-1, y+ht-16, 13, 3, '#d43424');
+  }
+  if (decor && decor.fu){
+    R(dx+3, y+ht-24, 7, 7, '#d43424');
+    hanzi('福', dx+6.5, y+ht-20, 5, '#f2b632');
+  }
+  if (decor && decor.lanterns){
+    drawLantern(x+4, y+2, 0.8, decor.lit, G.time);
+    drawLantern(x+w-4, y+2, 0.8, decor.lit, G.time+1.3);
+  }
+  if (h.sign){
+    R(x+w/2-14, y+2, 28, 8, '#3a2418');
+    T(h.sign, x+w/2, y+3.5, 4.4, '#f2b632', 'center');
+  }
+}
+function drawWindow(x,y){
+  R(x, y, 9, 8, '#2c2018');
+  R(x+4, y, 1, 8, '#f2b632'); R(x, y+3, 9, 1, '#f2b632');
+  R(x-1, y-1, 11, 1, '#8a6a48'); R(x-1, y+8, 11, 1, '#8a6a48');
+}
+function drawLantern(x, y, s=1, lit=true, t=0){
+  const sway = Math.sin(t*1.6 + x*0.35)*1.5*s;
+  x = x + sway;
+  if (lit) glow(x, y+5*s, 9*s, '#ffb050', 0.3);
+  R(x-1, y, 2*1, 2, '#f2b632');                       // hanger
+  R(x-3*s, y+2, 6*s, 2, '#f2b632');                   // cap
+  const bodyC = lit ? '#ff5838' : '#8a2c22';
+  R(x-4*s, y+3, 8*s, 5*s+2, bodyC);
+  R(x-5*s, y+4.5, 10*s, 3*s, bodyC);
+  if (lit) R(x-2*s, y+4.5, 4*s, 3*s, '#ffc060');
+  R(x-1, y+3, 1, 5*s+2, 'rgba(120,20,10,0.5)'); R(x-3*s+1, y+3.5, 1, 4*s, 'rgba(120,20,10,0.35)');
+  R(x-3*s, y+5*s+5, 6*s, 2, '#f2b632');               // base
+  R(x-0.5, y+5*s+7, 1, 3*s, '#f2b632');               // tassel
+}
+function drawTree(x, y, kind, chp){
+  cx.fillStyle='rgba(0,0,0,0.2)'; cx.fillRect((x-6)*P,(y-2)*P,12*P,3*P);
+  R(x-2, y-9, 4, 9, '#6a4a34');
+  const cols = chp===1 ? ['#2e6b46','#3d8256'] : chp===2 ? ['#3e8b4e','#57a862'] : ['#c8763c','#e0a03c'];
+  if (kind==='pine'){
+    R(x-7, y-14, 14, 6, cols[0]);
+    R(x-5, y-19, 10, 6, cols[1]);
+    R(x-3, y-23, 6, 5, cols[0]);
+    if (chp===1){ R(x-5, y-20, 10, 2, '#eef2f4'); R(x-3, y-24, 6, 2, '#eef2f4'); }
+  } else {
+    circle(x-4, y-13, 5, cols[0]); circle(x+4, y-13, 5, cols[0]);
+    circle(x, y-18, 6, cols[1]); circle(x-1, y-13, 5.5, cols[1]);
+    if (chp===3){ R(x-6, y-10, 3, 2, '#e0a03c'); R(x+4, y-8, 3, 2, '#c8763c'); }
+  }
+}
+function drawWell(x,y){
+  cx.fillStyle='rgba(0,0,0,0.2)'; cx.fillRect((x-9)*P,(y-2)*P,18*P,4*P);
+  R(x-8, y-8, 16, 8, '#8a8a92');
+  R(x-8, y-8, 16, 2, '#6a6a74'); R(x-7, y-6, 3, 6, '#a2a2ac'); R(x+4, y-6, 3, 6, '#a2a2ac');
+  R(x-6, y-7, 12, 4, '#20304a');
+  R(x-7, y-20, 2, 12, '#6a4a34'); R(x+5, y-20, 2, 12, '#6a4a34');
+  drawRoof(x-8, y-22, 16);
+}
+function drawShrine(x,y){
+  R(x-16, y-4, 32, 4, '#8a8a92');
+  R(x-13, y-24, 3, 20, '#a03428'); R(x+10, y-24, 3, 20, '#a03428');
+  drawRoof(x-14, y-26, 28);
+  R(x-8, y-16, 16, 12, '#3a2c24');
+  R(x-6, y-14, 12, 8, '#f4e8d0');
+  hanzi('詩', x, y-10, 6, '#a03428');
+  // incense pot
+  R(x-3, y-4, 6, 4, '#7a6a3a');
+  R(x-1, y-8, 1, 4, '#c8b8a0'); R(x+1, y-7, 1, 3, '#c8b8a0');
+  glow(x, y-9, 3, '#e8e4dc', 0.3);
+}
+function drawPavilion(x,y){
+  R(x-20, y-4, 40, 4, '#9a8a78');
+  R(x-16, y-26, 3, 22, '#a03428'); R(x+13, y-26, 3, 22, '#a03428');
+  R(x-8, y-26, 2, 22, '#a03428'); R(x+7, y-26, 2, 22, '#a03428');
+  drawRoof(x-18, y-28, 36, true);
+  R(x-1, y-32, 3, 3, '#f2b632');
+  R(x-14, y-12, 28, 2, '#c04434');
+}
+function drawBoat(x, y, t, o={}){
+  const bob = Math.sin(t*2 + (o.seed||0))*1.5;
+  y = y + bob;
+  // hull
+  R(x-22, y-4, 44, 6, '#b03a30');
+  R(x-20, y+2, 40, 2, '#7a2420');
+  for(let i=0;i<9;i++) R(x-20+i*4.5, y-3, 3, 2, '#f2b632');  // scales
+  // dragon head (bow, facing right)
+  R(x+20, y-10, 8, 8, '#2e8b4e');
+  R(x+26, y-7, 4, 3, '#f2b632');
+  R(x+22, y-12, 2, 3, '#f2b632'); R(x+25, y-12, 2, 3, '#f2b632');
+  R(x+24, y-9, 2, 2, '#e03c28');
+  // tail
+  R(x-26, y-9, 5, 6, '#2e8b4e'); R(x-28, y-11, 3, 4, '#f2b632');
+  if (o.crew){
+    for(let i=0;i<3;i++){
+      const px2 = x-10+i*9;
+      R(px2-2, y-9, 5, 5, i===0?'#4a6ab0':'#c02c20');
+      R(px2-1, y-12, 3, 3, '#eac086');
+      const pd = Math.sin(t*(o.fast?10:4)+i)*3;
+      R(px2+2, y-7+pd*0.4, 5, 1, '#8a6a48');   // paddle
+    }
+    // drummer at stern
+    R(x-18, y-10, 5, 6, '#f2b632');
+    R(x-17, y-13, 3, 3, '#eac086');
+    drawDrum(x-13, y-6, 0.7);
+  }
+}
+function drawDrum(x, y, s=1){
+  R(x-5*s, y-6*s, 10*s, 6*s, '#c04434');
+  R(x-5*s, y-6*s, 10*s, 1.5, '#f2b632'); R(x-5*s, y-1.5, 10*s, 1.5, '#f2b632');
+  cx.fillStyle = '#f4e8d0';
+  cx.beginPath(); cx.ellipse(x*P, (y-6*s)*P, 5*s*P, 1.8*P, 0, 0, Math.PI*2); cx.fill();
+  for(let i=0;i<4;i++) R(x-5*s+i*3*s, y-4*s, 1, 1, '#f2b632');
+}
+
+/* ---------- foods & small items ---------- */
+function drawDumpling(x,y,s=1){
+  cx.fillStyle='#f6ecd8'; cx.beginPath();
+  cx.ellipse(x*P,y*P,6*s*P,3.6*s*P,0,Math.PI,0); cx.fill();
+  R(x-6*s, y-0.5, 12*s, 1.6, '#e8d8b8');
+  for(let i=0;i<4;i++) R(x-4*s+i*2.4*s, y-3.4*s, 1, 2, '#e0ccaa');
+}
+function drawZongzi(x,y,s=1){
+  cx.fillStyle='#3e8b4e'; cx.beginPath();
+  cx.moveTo((x-6*s)*P,(y+4*s)*P); cx.lineTo((x+6*s)*P,(y+4*s)*P); cx.lineTo(x*P,(y-6*s)*P);
+  cx.closePath(); cx.fill();
+  cx.strokeStyle='#e8d8b8'; cx.lineWidth=P;
+  cx.beginPath(); cx.moveTo((x-4*s)*P,(y+1*s)*P); cx.lineTo((x+4*s)*P,(y+1*s)*P); cx.stroke();
+  cx.beginPath(); cx.moveTo((x-2)*P,(y-4*s)*P); cx.lineTo((x+3*s)*P,(y+3*s)*P); cx.stroke();
+}
+function drawMooncake(x,y,s=1){
+  circle(x,y,6*s,'#c8862c');
+  circle(x,y,4.6*s,'#e0a83c');
+  for(let i=0;i<8;i++){
+    const a=i/8*Math.PI*2;
+    R(x+Math.cos(a)*5.2*s-0.8, y+Math.sin(a)*5.2*s-0.8, 1.6, 1.6, '#c8862c');
+  }
+  R(x-2*s, y-2*s, 4*s, 4*s, '#b06a20');
+}
+function drawFish(x,y,s=1){
+  cx.fillStyle='#e8823c'; cx.beginPath();
+  cx.ellipse(x*P,y*P,7*s*P,3*s*P,0,0,Math.PI*2); cx.fill();
+  cx.beginPath(); cx.moveTo((x+6*s)*P,y*P); cx.lineTo((x+10*s)*P,(y-3*s)*P); cx.lineTo((x+10*s)*P,(y+3*s)*P);
+  cx.closePath(); cx.fill();
+  R(x-4*s, y-1, 1.6, 1.6, '#241a14');
+  R(x-1, y-3*s, 4, 1, '#c86028');
+}
+function drawOrange(x,y,s=1){
+  circle(x,y,3.4*s,'#f2942c');
+  R(x-0.6, y-4.4*s, 1.4, 1.6, '#3e8b4e');
+}
+function drawEnvelope(x,y,s=1,t=0,glowing=false){
+  if (glowing) glow(x, y, 12*s, '#f2b632', 0.4 + Math.sin(t*5)*0.15);
+  R(x-5*s, y-7*s, 10*s, 14*s, '#d43424');
+  R(x-5*s, y-7*s, 10*s, 2, '#b02418');
+  R(x-2*s, y-2*s, 4*s, 4*s, '#f2b632');
+}
+function drawScrollItem(x,y,t){
+  const fl = Math.sin(t*4+x)*1.5;
+  glow(x, y-6+fl, 8, '#f2b632', 0.25);
+  R(x-6, y-9+fl, 12, 7, '#f4e8d0');
+  R(x-7, y-9+fl, 2, 7, '#c8a860'); R(x+5, y-9+fl, 2, 7, '#c8a860');
+  R(x-3, y-7+fl, 6, 1, '#a03428'); R(x-3, y-5+fl, 6, 1, '#a03428');
+}
+function drawMugwort(x,y,t){
+  const sw = Math.sin(t*2+x)*0.8;
+  R(x-0.6+sw, y-8, 1.4, 8, '#3e7b3e');
+  R(x-3+sw, y-7, 3, 2, '#57a862'); R(x+0.6+sw, y-6, 3, 2, '#57a862');
+  R(x-3+sw, y-4, 3, 2, '#57a862'); R(x+0.6+sw, y-3, 3, 2, '#57a862');
+  glow(x, y-5, 5, '#78d878', 0.15);
+}
+function drawMoon(x, y, r, veil=0){
+  glow(x, y, r*2.4, '#f8ecc8', 0.35);
+  circle(x, y, r, '#f6eed2');
+  circle(x-r*0.3, y-r*0.2, r*0.16, '#ddd2ac');
+  circle(x+r*0.35, y+r*0.3, r*0.12, '#ddd2ac');
+  circle(x+r*0.2, y-r*0.45, r*0.1, '#ddd2ac');
+  // jade rabbit silhouette
+  cx.globalAlpha = 0.5;
+  R(x-r*0.15, y-r*0.05, r*0.3, r*0.42, '#c9bd96');
+  R(x-r*0.12, y-r*0.4, r*0.1, r*0.4, '#c9bd96');
+  R(x+r*0.04, y-r*0.4, r*0.1, r*0.4, '#c9bd96');
+  cx.globalAlpha = 1;
+  if (veil>0){
+    cx.globalAlpha = veil*0.75;
+    circle(x, y, r+1, '#5a5a6e');
+    cx.globalAlpha = 1;
+  }
+}
+function drawTable(x,y,w){
+  R(x, y-6, w, 6, '#8a5a38');
+  R(x, y-6, w, 1.6, '#a87048');
+  R(x+2, y, 3, 4, '#6a4028'); R(x+w-5, y, 3, 4, '#6a4028');
+}
+function drawTreasureLantern(x,y,t,lit){ drawLantern(x,y-14,1.7,lit,t); if(lit) glow(x,y-6,20,'#ff8040',0.35); }
+function drawTreasureDrum(x,y,t,lit){
+  drawDrum(x,y,1.8);
+  if(lit){ glow(x,y-6,18,'#f2b632',0.35); const pu=Math.abs(Math.sin(t*3))*2; R(x-2,y-13-pu,4,2,'#f2b632'); }
+}
+function drawTreasureMirror(x,y,t,lit){
+  R(x-1.5, y-6, 3, 6, '#8a6a3a');
+  circle(x, y-12, 7, '#b89a52');
+  circle(x, y-12, 5.6, lit?'#f6eed2':'#6a6a74');
+  if (lit){ glow(x, y-12, 16, '#f6eed2', 0.4); circle(x-2, y-14, 1.4, '#fffbe8'); }
+}
+
+/* ---------- portrait faces for dialogue ---------- */
+function drawPortrait(x, y, o){
+  // 22x22 face box
+  box(x, y, 24, 24, {border:'#c8a860'});
+  const cxx = x+12, cyy = y+13;
+  const skin = o.skin||'#eac086', hair = o.hair||'#181418';
+  if (o.dragon){
+    R(cxx-9, cyy-6, 18, 12, '#f2b632');
+    R(cxx+3, cyy-2, 7, 6, '#f8e0a0');
+    R(cxx-9, cyy-9, 3, 4, '#e03c28'); R(cxx+6, cyy-9, 3, 4, '#e03c28');
+    R(cxx-4, cyy-8, 8, 3, '#e03c28');
+    R(cxx-3, cyy-3, 3, 3, '#241a14');
+    R(cxx+8, cyy+2, 4, 1, '#e03c28');
+    return;
+  }
+  if (o.nian){
+    R(cxx-9, cyy-7, 18, 14, '#1e4a44');
+    R(cxx-7, cyy-10, 3, 4, '#f2b632'); R(cxx+4, cyy-10, 3, 4, '#f2b632');
+    R(cxx-5, cyy-4, 4, 2, '#ff3820'); R(cxx+1, cyy-4, 4, 2, '#ff3820');
+    R(cxx-4, cyy+2, 8, 2, '#4a1418');
+    R(cxx-4, cyy+2, 2, 2, '#f8f4ec'); R(cxx+2, cyy+2, 2, 2, '#f8f4ec');
+    return;
+  }
+  R(cxx-7, cyy-6, 14, 13, skin);
+  if (o.elder){ R(cxx-7, cyy-8, 14, 4, o.hair||'#e8e4dc'); if (o.beard) R(cxx-3, cyy+4, 6, 4, '#e8e4dc'); }
+  else { R(cxx-7, cyy-8, 14, 5, hair); R(cxx-7, cyy-4, 2, 3, hair); R(cxx+5, cyy-4, 2, 3, hair); }
+  if (o.buns){ R(cxx-10, cyy-8, 4, 4, hair); R(cxx+6, cyy-8, 4, 4, hair); }
+  R(cxx-4, cyy-1, 2, 2, '#241a14'); R(cxx+2, cyy-1, 2, 2, '#241a14');
+  R(cxx-1, cyy+3, 2, 1, '#c07858');
+  if (o.blush){ R(cxx-6, cyy+1, 2, 1.6, '#e8927c'); R(cxx+4, cyy+1, 2, 1.6, '#e8927c'); }
+}
+/* ============================================================
+   DATA — facts, sources, map, NPCs, quizzes
+   All festival facts checked against the sources listed below.
+   ============================================================ */
+
+/* ---------- the 15 Wisdom Scrolls ---------- */
+const SCROLLS = {
+  nian:      { ch:1, title:'The Legend of Nian',
+    text:"Long ago, people told of Nian, a fierce beast that crept out of the sea every New Year's Eve to attack villages. Nian feared three things: the color red, bright light, and loud noise. That is why people still hang red decorations, light lanterns, and set off firecrackers today." },
+  guonian:   { ch:1, title:'"Passing Over" the Year',
+    text:"In Chinese, celebrating New Year is called Guo Nian, which can mean 'to pass over Nian.' Every family that makes it to morning has outlasted the beast for one more year." },
+  sweep:     { ch:1, title:'Sweep Before, Never After',
+    text:"Families clean the whole house BEFORE New Year's Day to sweep away last year's bad luck. But nobody sweeps ON New Year's Day itself. You might sweep the brand-new good luck right out the door!" },
+  fu:        { ch:1, title:'The Upside-Down Fu',
+    text:"The character Fu means good fortune. Many families paste it upside down on purpose: in Chinese, 'upside down' (dao) sounds just like 'to arrive' (dao). So an upside-down Fu announces that good fortune has arrived." },
+  luckyfood: { ch:1, title:'Lucky Foods',
+    text:"New Year foods are chosen for their meanings. Dumplings (jiaozi) are folded to look like ancient gold ingots, a wish for wealth. A whole fish (yu) sounds like the word for 'surplus,' so families say 'nian nian you yu': may every year have extra." },
+  hongbao:   { ch:1, title:'Red Envelopes',
+    text:"Elders give children red envelopes (hongbao) of lucky money called yasuiqian, 'money that presses down evil spirits.' The real gift is the blessing: the red paper carries wishes of luck and protection into the new year." },
+  fifteen:   { ch:1, title:'Fifteen Days of New Year',
+    text:"Lunar New Year begins on the first new moon of the lunar calendar and the festivities last about fifteen days, ending at the Lantern Festival on the first full moon, with lion and dragon dances, parades, and glowing lanterns." },
+  quyuan:    { ch:2, title:'Qu Yuan the Poet',
+    text:"Over 2,200 years ago, in the Warring States period, Qu Yuan was a loyal poet and minister of the kingdom of Chu. He wrote the famous poem 'Li Sao.' When his beloved kingdom fell, he was so heartbroken that he drowned himself in the Miluo River." },
+  race:      { ch:2, title:'Why the Boats Race',
+    text:"Villagers who loved Qu Yuan paddled out fast, beating drums and splashing their oars to keep the fish away from him. Dragon boat races today re-create that rescue dash: long painted boats, pounding drums, flying paddles." },
+  zongzi:    { ch:2, title:'Zongzi',
+    text:"People threw rice into the river so the fish would eat it instead of Qu Yuan. That grew into zongzi: sticky rice wrapped in bamboo or reed leaves. In northern China they are often sweet with dates; in the south, savory with pork or salted egg yolk." },
+  unesco:    { ch:2, title:'A World Treasure',
+    text:"In 2009, the Dragon Boat Festival became the first Chinese festival added to UNESCO's list of the Intangible Cultural Heritage of Humanity. The whole world now helps protect its story." },
+  herbs:     { ch:2, title:'The Poison Month',
+    text:"The festival falls on the 5th day of the 5th lunar month, when summer heat wakes up sickness and stinging pests. Families hang mugwort and calamus herbs on their doors and wear fragrant sachets to drive the 'five poisons' away." },
+  change:    { ch:3, title:"Chang'e Flies to the Moon",
+    text:"The hero Hou Yi shot down nine of ten burning suns and was given an elixir of immortality. When a thief tried to steal it, Hou Yi's wife Chang'e drank it to keep it safe and floated up to the moon, where she lives with the Jade Rabbit. Hou Yi set out her favorite foods under the full moon every year." },
+  mooncake:  { ch:3, title:'Mooncakes Mean Reunion',
+    text:"Mooncakes are round like the full moon, a symbol of family reunion (tuanyuan). One cake is cut so everyone shares a slice. Tang dynasty emperors gifted them to scholars, and by the Song dynasty they appear in festival records. One legend even says rebels once hid secret messages inside them!" },
+  midautumn: { ch:3, title:'Three Thousand Years of Moonlight',
+    text:"Mid-Autumn falls on the 15th day of the 8th lunar month, under the year's roundest, brightest full moon. It began over 3,000 years ago as a harvest thank-you to the moon, grew popular in the Tang dynasty, and is still the great family-reunion festival." },
+  legacy:    { ch:3, title:'Keeping Stories Lit',
+    text:"Festivals survive only when each generation passes them on: a grandmother's recipe, a story at the table, a lantern lit with a child. When you share what you learned, YOU become part of the tradition too." },
+};
+const SCROLL_ORDER = ['nian','guonian','sweep','fu','luckyfood','hongbao','fifteen',
+                      'quyuan','race','zongzi','unesco','herbs',
+                      'change','mooncake','midautumn','legacy'];
+
+/* ---------- sources (also in SOURCES.md) ---------- */
+const SOURCES_LIST = [
+  ['"Chinese New Year."', 'Encyclopaedia Britannica', 'britannica.com/topic/Chinese-New-Year'],
+  ['"Dragon Boat Festival."', 'Encyclopaedia Britannica', 'britannica.com/topic/Dragon-Boat-Festival'],
+  ['"Lunar New Year Traditions: Food, Customs & Symbols."', 'HISTORY, A&E Television Networks', 'history.com/articles/chinese-new-year-traditions'],
+  ['"The Rebellious History of Mooncakes."', 'Smithsonian Magazine', 'smithsonianmag.com'],
+  ['"The Monster Nian, Chinese New Year, and Red."', 'USC Digital Folklore Archives', 'folklore.usc.edu'],
+];
+
+/* ---------- world map (60 x 22 tiles of 16px) ---------- */
+const MAPW = 60, MAPH = 22, TILE = 16;
+const map = [];
+function mrect(x,y,w,h,c){
+  for(let j=y;j<y+h;j++) for(let i=x;i<x+w;i++)
+    if (i>=0&&i<MAPW&&j>=0&&j<MAPH) map[j][i]=c;
+}
+(function buildMap(){
+  for(let j=0;j<MAPH;j++){ map[j]=[]; for(let i=0;i<MAPW;i++) map[j][i]='G'; }
+  mrect(0,17,60,5,'W');      // river along the bottom
+  mrect(0,16,60,1,'R');      // reedy bank
+  mrect(51,2,9,11,'H');      // moon-viewing hill (east)
+  mrect(2,8,50,2,'P');       // main street
+  mrect(51,8,9,2,'H');
+  mrect(24,10,12,5,'S');     // village plaza
+  mrect(4,10,6,4,'S');       // shrine pad (west)
+  mrect(41,10,2,6,'P');      // lane down to the dock
+  mrect(40,16,6,3,'D');      // wooden dock over the water
+  mrect(7,6,2,2,'P');        // door lanes
+  mrect(14,6,2,2,'P');
+  mrect(27,6,2,2,'P');
+  mrect(36,6,2,2,'P');
+  mrect(42,6,2,2,'P');
+})();
+
+/* houses: px coords. door = offset of door from house x */
+const HOUSES = [
+  { id:'mei',  x:100, y:64, w:64, ht:26, door:24 },
+  { id:'hua',  x:206, y:64, w:52, ht:26, door:20 },
+  { id:'tea',  x:406, y:56, w:78, ht:34, door:32, sign:'TEA HOUSE' },
+  { id:'bo',   x:562, y:64, w:52, ht:26, door:20 },
+  { id:'fang', x:658, y:64, w:64, ht:26, door:26, sign:'BAKERY' },
+];
+const TREES = [ // [x, y, kind]
+  [40,52,'pine'],[300,50,'pine'],[520,50,'pine'],[620,48,'pine'],[760,50,'pine'],
+  [60,180,'round'],[190,160,'round'],[350,120,'pine'],[620,170,'round'],
+  [740,180,'round'],[850,90,'round'],[905,140,'round'],[890,200,'pine'],
+];
+const WELL = { x:372, y:206 };
+const SHRINE = { x:104, y:210 };
+const PAVILION = { x:880, y:130 };
+/* lantern poles for the chapter 3 lighting quest: [x,y] */
+const POLES = [ [176,150],[330,132],[540,150],[736,150],[872,186] ];
+/* mugwort spawn points for chapter 2: [x,y] */
+const MUGWORT = [ [150,258],[480,258],[820,258] ];
+
+/* solid obstacles beyond water (px rects) */
+function solidRects(){
+  const rs = [];
+  for (const h of HOUSES) rs.push([h.x-4, h.y-14, h.w+8, h.ht+14]);
+  rs.push([SHRINE.x-17, SHRINE.y-24, 34, 24]);
+  rs.push([PAVILION.x-21, PAVILION.y-26, 42, 26]);
+  rs.push([WELL.x-9, WELL.y-14, 18, 14]);
+  for (const t of TREES) rs.push([t[0]-4, t[1]-10, 8, 10]);
+  for (const p of POLES) rs.push([p[0]-2, p[1]-8, 4, 8]);
+  rs.push([471,196,18,12]);   // treasure pedestal
+  return rs;
+}
+const SOLIDS = solidRects();
+
+/* ---------- NPCs ---------- */
+/* look: options for drawPerson / drawPortrait */
+const NPCS = {
+  mei:  { name:'Mei',        look:{skin:'#eac086', hair:'#181418', top:'#e03c28', pants:'#3a3a55', child:true, buns:true, blush:true},
+          pos:{1:[150,120,'down'], 2:[300,150,'down'], 3:[700,262,'up']} },
+  elder:{ name:'Elder Shan', look:{skin:'#dcb27c', hair:'#e8e4dc', top:'#8a6a3a', pants:'#4a3a2a', elder:true, beard:true},
+          pos:{1:[445,110,'down'], 2:[445,110,'down'], 3:[445,110,'down']} },
+  hua:  { name:'Auntie Hua', look:{skin:'#eac086', hair:'#2a2024', top:'#8a4a9a', pants:'#5a3a55', bun:true},
+          pos:{1:[240,108,'down'], 2:[240,108,'down'], 3:[240,108,'down']} },
+  bo:   { name:'Uncle Bo',   look:{skin:'#d8a878', hair:'#2a2024', top:'#3a5ab0', pants:'#2a2a3a'},
+          pos:{1:[596,108,'down'], 2:[596,108,'down'], 3:[596,108,'down']} },
+  yu:   { name:'Captain Yu', look:{skin:'#d09868', hair:'#181418', top:'#207878', pants:'#3a3a2a', hat:true},
+          pos:{1:[672,242,'down'], 2:[672,242,'down'], 3:[672,242,'down']} },
+  wen:  { name:'Old Wen',    look:{skin:'#dcb27c', hair:'#d8d4cc', top:'#3e7b4e', pants:'#3a3a2a', elder:true, beard:true},
+          pos:{1:[140,200,'down'], 2:[140,200,'down'], 3:[140,200,'down']} },
+  zhu:  { name:'Granny Zhu', look:{skin:'#e0b284', hair:'#e8e4dc', top:'#5a7a3a', pants:'#4a4a3a', elder:true, bun:true},
+          pos:{1:[340,190,'down'], 2:[340,190,'down'], 3:[340,190,'down']} },
+  fang: { name:'Baker Fang', look:{skin:'#e8bc90', hair:'#3a2c24', top:'#e8e0d0', pants:'#5a4a3a'},
+          pos:{1:[700,108,'down'], 2:[700,108,'down'], 3:[700,108,'down']} },
+};
+const PLAYER_LOOK = { skin:'#eac086', hair:'#181418', top:'#e8b028', pants:'#3a4a8a' };
+const NAINAI_LOOK = { skin:'#dcb27c', hair:'#e8e4dc', top:'#7a3a8a', pants:'#4a3a45', elder:true, bun:true };
+const MA_LOOK     = { skin:'#eac086', hair:'#2a2024', top:'#c05878', pants:'#3a3a55', bun:true };
+const BA_LOOK     = { skin:'#d8a878', hair:'#181418', top:'#3a6a5a', pants:'#2a2a3a' };
+const LONG_PORTRAIT = { dragon:true };
+
+/* ---------- objectives per chapter/step ---------- */
+const OBJECTIVES = {
+  1: [ 'Follow the glowing dragon…',
+       'Talk to Elder Shan at the TEA HOUSE',
+       'Help Auntie Hua sweep (hold ✓)',
+       'Help Uncle Bo hang the couplets',
+       'Make dumplings with Mei’s family',
+       'NIGHT FALLS… stand with the village!',
+       'Collect your red envelope from Elder Shan',
+       'Talk to Lóng the dragon' ],
+  2: [ 'Talk to Captain Yu at the dock',
+       'Ask Old Wen about the poet (west shrine)',
+       'Wrap zongzi with Granny Zhu',
+       'Gather 3 mugwort sprigs by the river',
+       'Bring the herbs to Granny Zhu',
+       'Race the dragon boat with Captain Yu!',
+       'Talk to Lóng the dragon' ],
+  3: [ 'Find Mei on the dock at dusk',
+       'Hear the story of Chang’e',
+       'Bake mooncakes with Baker Fang',
+       'Light the 5 lanterns around the village',
+       'Join the reunion feast in the plaza',
+       'Solve the lantern riddles!',
+       'Talk to Lóng the dragon' ],
+};
+
+/* ---------- quizzes & riddles ---------- */
+const QUIZ_CH1 = [
+  { q:'Which of these does the beast Nian NOT fear?',
+    a:['Loud firecrackers','The color red','Fresh dumplings','Bright light'], correct:2,
+    yay:'Right! Nian fears red, light, and noise. Dumplings are for US.' },
+  { q:'Why do families paste the Fu character upside down?',
+    a:["'Upside down' sounds like 'arrives'",'It looks cooler that way','To confuse the mail carrier'], correct:0,
+    yay:"Yes! Upside-down Fu = 'good fortune has ARRIVED.'" },
+];
+const QUIZ_CH2 = [
+  { q:'Who do the dragon boat races honor?',
+    a:['A dragon king','Qu Yuan the poet','The first emperor'], correct:1,
+    yay:'Yes. The boats re-create the dash to save Qu Yuan.' },
+  { q:'Why did villagers throw rice into the river?',
+    a:['To feed the dragons','To make the river pretty','So fish would eat rice, not Qu Yuan'], correct:2,
+    yay:'Right — and that rice became zongzi!' },
+];
+const RIDDLES = [
+  { q:'RIDDLE 1: I am round when the family is whole. Cut me into slices and share me under the full moon. What am I?',
+    a:['A mooncake','A red envelope','A drum'], correct:0, yay:'A mooncake — round like reunion itself!' },
+  { q:'RIDDLE 2: Nian the beast fears my voice, and children love my BANG. What am I?',
+    a:['A dragon boat','Firecrackers','A broom'], correct:1, yay:'Firecrackers — noise that chases the beast away!' },
+  { q:'RIDDLE 3: I wear a coat of green leaves and swam to save a poet. What am I?',
+    a:['A lantern','A mooncake','A zongzi'], correct:2, yay:'Zongzi — rice armor for a beloved poet!' },
+  { q:'RIDDLE 4: I sipped starlight to guard it from a thief, and now a rabbit is my neighbor. Who am I?',
+    a:["Chang'e, on the moon",'Hou Yi the archer','Granny Zhu'], correct:0, yay:"Chang'e — look up, she's listening!" },
+];
+
+/* ---------- minigame configs ---------- */
+const MG_DUMPLING = {
+  title:'DUMPLING KITCHEN', icon:'dumpling',
+  steps:['Roll the wrappers','Spoon the filling','Fold and crimp'],
+  lens:[4,5,6],
+  flavor:'Fold them like little gold ingots!',
+  doneLine:'A whole steamer of golden-ingot dumplings!'
+};
+const MG_ZONGZI = {
+  title:'ZONGZI WRAP-OFF', icon:'zongzi',
+  steps:['Fold the bamboo leaves','Pack the sticky rice','Tie it tight'],
+  lens:[4,5,6],
+  flavor:'Leaf, rice, filling, string — no gaps or the river gets in!',
+  doneLine:'A perfect pyramid of zongzi, wrapped tight!'
+};
+/* ============================================================
+   WORLD — village engine, dialogue, HUD
+   ============================================================ */
+
+/* ---------- dialogue system ---------- */
+const DLG = { active:false, queue:[], line:null, chars:0, onDone:null, choice:null, sel:0 };
+function say(entries, onDone){
+  DLG.queue = entries.slice(); DLG.onDone = onDone || null;
+  DLG.active = true; DLG.choice = null;
+  dlgNext();
+}
+function dlgNext(){
+  const e = DLG.queue.shift();
+  if (!e){
+    DLG.active = false; DLG.line = null;
+    const cb = DLG.onDone; DLG.onDone = null;
+    if (cb) cb();
+    return;
+  }
+  if (e.choice){ DLG.choice = e; DLG.sel = 0; DLG.line = null; SFX.blip(); return; }
+  DLG.line = e; DLG.chars = 0;
+}
+function dlgUpdate(dt){
+  if (DLG.choice){
+    const n = DLG.choice.choice.length;
+    if (just.up)   { DLG.sel = (DLG.sel+n-1)%n; SFX.blip(); }
+    if (just.down) { DLG.sel = (DLG.sel+1)%n; SFX.blip(); }
+    if (just.a){
+      const c = DLG.choice; DLG.choice = null;
+      SFX.select();
+      if (c.cb) c.cb(DLG.sel);
+      else dlgNext();
+      return;
+    }
+    return;
+  }
+  if (!DLG.line) return;
+  DLG.chars += dt*50;
+  if (just.a){
+    if (DLG.chars < DLG.line.text.length){ DLG.chars = DLG.line.text.length; }
+    else { SFX.blip(); dlgNext(); }
+  }
+}
+function dlgRender(){
+  if (DLG.choice){
+    const c = DLG.choice;
+    const lines = wrap(c.q || '', 270, 6.4);
+    const optH = c.choice.length*11;
+    const h = lines.length*8 + optH + 12;
+    box(20, 168-h, 280, h);
+    let yy = 172-h;
+    for (const ln of lines){ T(ln, 28, yy, 6.4, '#f4e8d0'); yy += 8; }
+    yy += 3;
+    c.choice.forEach((opt,i)=>{
+      if (i===DLG.sel){ R(26, yy-1, 268, 10, 'rgba(242,182,50,0.22)'); T('▶', 29, yy, 6.4, '#f2b632'); }
+      T(opt, 40, yy, 6.4, i===DLG.sel?'#ffd964':'#cfc0a8');
+      yy += 11;
+    });
+    return;
+  }
+  if (!DLG.line) return;
+  const e = DLG.line;
+  const hasPort = !!e.port;
+  const tx = hasPort ? 66 : 36;
+  const twMax = hasPort ? 240 : 268;
+  box(8, 130, 304, 44);
+  if (hasPort) drawPortrait(14, 136, e.port);
+  if (e.who){
+    R(hasPort?42:12, 124, textW(e.who,6)+8, 11, '#a03428');
+    T(e.who, (hasPort?46:16), 126, 6, '#ffe9b0');
+  }
+  const shown = e.text.slice(0, Math.floor(DLG.chars));
+  const lines = wrap(shown, twMax, 6.4);
+  let yy = 138;
+  for (let i=0;i<Math.min(lines.length,4);i++){ T(lines[i], tx, yy, 6.4, '#f4e8d0'); yy += 9; }
+  if (DLG.chars >= e.text.length && Math.sin(G.time*6)>0){
+    T('▼', 300, 164, 6, '#f2b632');
+  }
+}
+
+/* ---------- scroll toast ---------- */
+let toast = null;
+function giveScroll(id){
+  if (G.scrolls.includes(id)) return;
+  G.scrolls.push(id);
+  toast = { t:0, title: SCROLLS[id].title };
+  SFX.scroll();
+  saveGame();
+}
+function toastRender(dt){
+  if (!toast) return;
+  toast.t += dt;
+  if (toast.t > 3){ toast = null; return; }
+  const a = toast.t<0.3 ? toast.t/0.3 : toast.t>2.5 ? (3-toast.t)/0.5 : 1;
+  cx.globalAlpha = clamp(a,0,1);
+  box(60, 24, 200, 22, {border:'#f2b632'});
+  drawScrollItem(76, 44, G.time);
+  T('WISDOM SCROLL!', 90, 27, 5.4, '#f2b632');
+  T(toast.title, 90, 35, 6, '#f4e8d0');
+  cx.globalAlpha = 1;
+}
+
+/* ---------- tiles ---------- */
+const PALS = {
+  1:{ ground:'#cfc4a4', speck:'#bdb18e', snow:'#eef0ee', path:'#c0a276', pstone:'#a8a49a',
+      water1:'#4a7ab2', water2:'#5c8cc4', hill:'#c2ba92', reed:'#b8ae86' },
+  2:{ ground:'#6fae4e', speck:'#5f9c42', snow:null,      path:'#c8a878', pstone:'#a8a49a',
+      water1:'#3a7ab2', water2:'#4e90c8', hill:'#83bc5c', reed:'#5f9c42' },
+  3:{ ground:'#b08a52', speck:'#9c7844', snow:null,      path:'#c09c6a', pstone:'#a89a88',
+      water1:'#2a4a7a', water2:'#3a5e94', hill:'#bc9660', reed:'#9c7844' },
+};
+function drawTiles(cam, camY){
+  const pal = PALS[clamp(G.ch,1,3)] || PALS[1];
+  const x0 = Math.floor(cam/TILE), x1 = Math.min(MAPW-1, Math.ceil((cam+LW)/TILE));
+  const y0 = Math.floor(camY/TILE), y1 = Math.min(MAPH-1, Math.ceil((camY+LH)/TILE));
+  for (let ty=y0; ty<=y1; ty++){
+    for (let tx=x0; tx<=x1; tx++){
+      const c = map[ty][tx];
+      const sx = tx*TILE-cam, sy = ty*TILE-camY;
+      const h = thash(tx,ty);
+      if (c==='G' || c==='R'){
+        R(sx,sy,TILE,TILE, pal.ground);
+        if (h<0.35) R(sx+((h*40)%12), sy+((h*90)%12), 2, 2, pal.speck);
+        if (G.ch===1 && h>0.62) R(sx+((h*70)%10), sy+((h*50)%10), 4, 3, pal.snow);
+        if (c==='R'){
+          R(sx+3, sy+6, 1.4, 10, '#7a9a4e'); R(sx+9, sy+4, 1.4, 12, '#8aa85a');
+          R(sx+13, sy+8, 1.4, 8, '#7a9a4e');
+        }
+      } else if (c==='P'){
+        R(sx,sy,TILE,TILE, pal.path);
+        if (h<0.3) R(sx+((h*40)%12), sy+((h*90)%12), 2.4, 2, 'rgba(0,0,0,0.08)');
+      } else if (c==='S'){
+        R(sx,sy,TILE,TILE, pal.pstone);
+        R(sx,sy,TILE,1,'rgba(0,0,0,0.12)'); R(sx,sy,1,TILE,'rgba(0,0,0,0.12)');
+        R(sx+8,sy+8,1,8,'rgba(0,0,0,0.08)'); R(sx+8,sy+8,8,1,'rgba(0,0,0,0.08)');
+      } else if (c==='W'){
+        R(sx,sy,TILE,TILE, pal.water1);
+        const wv = Math.sin(G.time*1.4 + tx*0.9 + ty*1.7);
+        if (wv>0.2) R(sx+2, sy+5+wv*2, 9, 1.4, pal.water2);
+        if (h<0.12 && Math.sin(G.time*2.5+h*40)>0.6) R(sx+7, sy+9, 2, 1.4, '#cfe4f4');
+      } else if (c==='D'){
+        R(sx,sy,TILE,TILE, '#8a6844');
+        R(sx,sy,TILE,1.4,'#6a4c30'); R(sx,sy+8,TILE,1.4,'#6a4c30');
+        R(sx+((tx%2)*8), sy, 1.4, TILE, '#6a4c30');
+      } else if (c==='H'){
+        R(sx,sy,TILE,TILE, pal.hill);
+        if (h<0.3) R(sx+((h*40)%12), sy+((h*90)%12), 2, 2, pal.speck);
+        if (map[ty][tx-1] && map[ty][tx-1]!=='H') R(sx,sy,2,TILE,'rgba(90,70,40,0.35)');
+        if (map[ty+1] && map[ty+1][tx]!=='H') R(sx,sy+TILE-2,TILE,2,'rgba(90,70,40,0.35)');
+      }
+    }
+  }
+}
+
+/* ---------- collision ---------- */
+function tileAt(x,y){
+  const tx = Math.floor(x/TILE), ty = Math.floor(y/TILE);
+  if (tx<0||tx>=MAPW||ty<0||ty>=MAPH) return 'X';
+  return map[ty][tx];
+}
+function blockedAt(x,y){
+  // feet box
+  for (const [ox,oy] of [[-4,-1],[4,-1],[-4,-4],[4,-4]]){
+    const t = tileAt(x+ox, y+oy);
+    if (t==='X' || t==='W') return true;
+  }
+  for (const r of SOLIDS){
+    if (x+4>r[0] && x-4<r[0]+r[2] && y>r[1] && y-5<r[1]+r[3]) return true;
+  }
+  return false;
+}
+
+/* ---------- world scene ---------- */
+const world = {
+  px:470, py:150, dir:'down', walking:false,
+  lx:450, ly:140,             // Lóng position
+  cam:0, camY:0,
+  ambT:0,
+  enter(){
+    playMusic(clamp(G.ch,0,3));
+  },
+  update(dt){
+    updateFade(dt);
+    updateParts(dt);
+    if (toast) {} // toast timing handled in render
+    if (DLG.active){ dlgUpdate(dt); this.followLong(dt); return; }
+    if (just.journal){ pushScene(makeJournal()); return; }
+    // movement
+    let vx=0, vy=0;
+    if (keys.left) vx=-1; else if (keys.right) vx=1;
+    if (keys.up) vy=-1; else if (keys.down) vy=1;
+    this.walking = !!(vx||vy);
+    if (vx&&vy){ vx*=0.707; vy*=0.707; }
+    if (vx<0) this.dir='left'; else if (vx>0) this.dir='right';
+    else if (vy<0) this.dir='up'; else if (vy>0) this.dir='down';
+    const sp = 62;
+    const nx = clamp(this.px + vx*sp*dt, 8, MAPW*TILE-8);
+    const ny = clamp(this.py + vy*sp*dt, 26, MAPH*TILE-4);
+    if (!blockedAt(nx, this.py)) this.px = nx;
+    if (!blockedAt(this.px, ny)) this.py = ny;
+    this.followLong(dt);
+    // ambience
+    this.ambT -= dt;
+    if (this.ambT<=0){
+      this.ambT = G.ch===1?0.09 : G.ch===3?0.25 : 0.2;
+      if (G.ch===1) spawnPart({x:this.cam+rnd(LW), y:this.camY-4, vx:rnd(-6,6), vy:rnd(14,26), g:0, life:rnd(4,7), t:0, c:'#f4f6f4', sz:rnd(1,2)});
+      if (G.ch===2) spawnPart({x:this.cam+rnd(LW), y:this.camY-4, vx:rnd(-14,4), vy:rnd(10,20), g:0, life:rnd(4,7), t:0, c:pick(['#8fd47a','#f2c2d0']), sz:rnd(1,1.8)});
+      if (G.ch===3) spawnPart({x:this.cam+rnd(LW), y:this.camY+rnd(LH), vx:rnd(-4,4), vy:rnd(-6,2), g:0, life:rnd(1.5,3), t:0, c:'#ffe98a', sz:1.4});
+    }
+    // interact
+    const it = this.nearInteract();
+    if (it && just.a){ SFX.select(); it.talk(); }
+    chapterTick(dt);
+  },
+  followLong(dt){
+    let tx2, ty2;
+    if (typeof longWaiting==='function' && longWaiting()){
+      tx2 = 480; ty2 = 186;   // waits by the treasure pedestal
+    } else {
+      const behind = this.dir==='left'? 24 : this.dir==='right'? -24 : (this.px>this.lx?-24:24);
+      tx2 = this.px + behind; ty2 = this.py - 18;
+    }
+    this.lx = lerp(this.lx, tx2, clamp(dt*3,0,1));
+    this.ly = lerp(this.ly, ty2, clamp(dt*3,0,1));
+  },
+  nearInteract(){
+    let best=null, bd=1e9;
+    for (const it of getInteractables()){
+      const d = dist(this.px, this.py, it.x, it.y);
+      if (d > (it.r||26)) continue;
+      const ad = d + (it.depri||0);   // Lóng yields to villagers standing nearby
+      if (ad < bd){ bd=ad; best=it; }
+    }
+    return best;
+  },
+  render(){
+    const ch = clamp(G.ch,1,3);
+    this.cam  = clamp(this.px - LW/2, 0, MAPW*TILE-LW);
+    this.camY = clamp(this.py - LH/2, 0, MAPH*TILE-LH);
+    const cam=this.cam, camY=this.camY;
+    drawTiles(cam, camY);
+    const lights = [];
+    // drawable list sorted by baseline y
+    const items = [];
+    for (const h of HOUSES) items.push({y:h.y+h.ht, f:()=>{
+      const dec = houseDecor(h);
+      drawHouse({...h, x:h.x-cam, y:h.y-camY}, dec);
+      if (dec.lanterns && dec.lit){ lights.push({x:h.x+4-cam, y:h.y+8-camY, r:14}); lights.push({x:h.x+h.w-4-cam, y:h.y+8-camY, r:14}); }
+    }});
+    for (const t of TREES) items.push({y:t[1], f:()=> drawTree(t[0]-cam, t[1]-camY, t[2], ch)});
+    items.push({y:WELL.y, f:()=> drawWell(WELL.x-cam, WELL.y-camY)});
+    items.push({y:SHRINE.y, f:()=> drawShrine(SHRINE.x-cam, SHRINE.y-camY)});
+    items.push({y:PAVILION.y, f:()=> drawPavilion(PAVILION.x-cam, PAVILION.y-camY)});
+    // treasure pedestal in the plaza
+    items.push({y:206, f:()=> drawPedestal(480-cam, 206-camY)});
+    // chapter extras
+    chapterScenery(items, cam, camY, lights);
+    // NPCs
+    for (const id in NPCS){
+      const n = NPCS[id], p = npcPos(id);
+      if (!p) continue;
+      items.push({y:p[1], f:()=>{
+        const look = {...n.look, dir:p[2]||'down', walk:false};
+        drawPerson(p[0]-cam, p[1]-camY, look, G.time);
+      }});
+    }
+    // player
+    items.push({y:this.py, f:()=>{
+      drawPerson(this.px-cam, this.py-camY, {...PLAYER_LOOK, dir:this.dir, walk:this.walking}, G.time);
+    }});
+    // Lóng
+    items.push({y:this.ly+30, f:()=> drawLong(this.lx-cam, this.ly-camY, G.time, this.lx>this.px)});
+    items.sort((a,b)=>a.y-b.y);
+    for (const it of items) it.f();
+    drawParts(cam, camY);
+    // night overlay + lights
+    if (G.night>0){
+      cx.fillStyle = 'rgba(14,14,52,'+(G.night*0.55)+')';
+      cx.fillRect(0,0,LW*P,LH*P);
+      cx.globalCompositeOperation = 'lighter';
+      for (const L of lights) glow(L.x, L.y, L.r, 'rgba(255,170,70,1)', 0.35*G.night);
+      cx.globalCompositeOperation = 'source-over';
+    }
+    if (ch===3) drawMoon(295, 44, 13, G.flags.moonlit?0:0.55);
+    this.renderHUD();
+    dlgRender();
+    toastRender(1/60);
+    drawFade();
+  },
+  renderHUD(){
+    // objective
+    const obj = (OBJECTIVES[G.ch]||[])[G.step];
+    if (obj && !DLG.active){
+      const w = textW(obj,5.4)+22;
+      box(6, 5, w, 13, {bg:'rgba(20,12,16,0.82)'});
+      T('✦', 11, 8, 5.4, '#f2b632');
+      T(obj, 20, 8, 5.4, '#f4e8d0');
+    }
+    // scroll count
+    const sc = G.scrolls.length + '/' + SCROLL_ORDER.length;
+    box(272, 5, 42, 13, {bg:'rgba(20,12,16,0.82)'});
+    drawScrollItem(282, 16, 0);
+    T(sc, 292, 8, 6, '#f4e8d0');
+    // interact prompt
+    const it = DLG.active ? null : this.nearInteract();
+    if (it){
+      const label = '✓ ' + (it.label||'Talk');
+      const w = textW(label,5.4)+10;
+      box(LW/2-w/2, 118, w, 11, {bg:'rgba(20,12,16,0.85)', border:'#c8a860'});
+      T(label, LW/2, 120, 5.4, '#ffd964', 'center');
+    }
+  }
+};
+function npcMoved(id, x, y, dir){ NPC_OVERRIDE[id] = [x,y,dir]; }
+const NPC_OVERRIDE = {};
+function npcPos(id){
+  if (NPC_OVERRIDE[id]) return NPC_OVERRIDE[id];
+  const n = NPCS[id];
+  return n.pos[clamp(G.ch,1,3)];
+}
+function drawPedestal(x,y){
+  R(x-10, y-5, 20, 5, '#8a8a92'); R(x-8, y-7, 16, 2, '#a2a2ac');
+  const t = G.time;
+  if (G.ch===1) drawTreasureLantern(x, y-7, t, G.flags.t1);
+  else if (G.ch===2) drawTreasureDrum(x, y-7, t, G.flags.t2);
+  else drawTreasureMirror(x, y-7, t, G.flags.t3);
+}
+/* ============================================================
+   MINIGAMES — sequence, timing, rhythm, quiz
+   ============================================================ */
+
+function drawArrow(x, y, dir, s, color){
+  cx.fillStyle = color; cx.beginPath();
+  const a = {up:[[0,-1],[0.9,0.5],[-0.9,0.5]], down:[[0,1],[0.9,-0.5],[-0.9,-0.5]],
+             left:[[-1,0],[0.5,0.9],[0.5,-0.9]], right:[[1,0],[-0.5,0.9],[-0.5,-0.9]]}[dir];
+  cx.moveTo((x+a[0][0]*s)*P, (y+a[0][1]*s)*P);
+  cx.lineTo((x+a[1][0]*s)*P, (y+a[1][1]*s)*P);
+  cx.lineTo((x+a[2][0]*s)*P, (y+a[2][1]*s)*P);
+  cx.closePath(); cx.fill();
+}
+function mgHeader(title, sub){
+  R(0,0,LW,26,'rgba(20,12,16,0.9)');
+  R(0,25,LW,1,'#f2b632');
+  T(title, LW/2, 4, 8, '#f2b632', 'center');
+  if (sub) T(sub, LW/2, 15, 5.4, '#cfc0a8', 'center');
+}
+function kitchenBG(){
+  R(0,0,LW,LH,'#5a4432');
+  for(let i=0;i<LW;i+=22) R(i,0,1,LH,'rgba(0,0,0,0.12)');
+  R(0,110,LW,70,'#8a6844');
+  R(0,110,LW,4,'#a88054');
+  // steamer
+  circle(50,100,16,'#c8b696'); circle(50,100,13,'#e0d2b0');
+  for(let i=0;i<5;i++) R(38+i*5, 96, 2, 8, '#c8b696');
+  const st = G.time;
+  for(let i=0;i<3;i++){
+    const yy = 84 - ((st*12+i*10)%26);
+    cx.globalAlpha = clamp(1-(84-yy)/26,0,0.5);
+    circle(46+Math.sin(st*2+i)*4, yy, 3, '#f4f0e4');
+    cx.globalAlpha = 1;
+  }
+  // hanging garlic + lantern
+  drawLantern(285, 30, 0.9, true, G.time);
+}
+
+/* ---------- SEQUENCE (dumplings, zongzi) ---------- */
+function makeSequence(cfg, onDone){
+  const dirs = ['up','down','left','right'];
+  let round = 0, seq = [], idx = 0, flash = 0, doneT = 0, state = 'play';
+  function roll(){ seq = []; for(let i=0;i<cfg.lens[round];i++) seq.push(pick(dirs)); idx = 0; }
+  roll();
+  return {
+    update(dt){
+      flash = Math.max(0, flash-dt);
+      updateParts(dt);
+      if (state==='alldone'){
+        doneT += dt;
+        if (just.a && doneT>0.6){ popScene(); onDone(); }
+        return;
+      }
+      if (state==='rounddone'){
+        doneT += dt;
+        if (doneT > 0.9){ state='play'; roll(); }
+        return;
+      }
+      for (const d of dirs){
+        if (just[d]){
+          if (d === seq[idx]){ idx++; SFX.blip();
+            if (idx >= seq.length){
+              round++;
+              SFX.good();
+              burst(160, 84, ['#f2b632','#ffe98a','#f6ecd8'], 18, 40);
+              if (round >= cfg.lens.length){ state='alldone'; doneT=0; SFX.win(); }
+              else { state='rounddone'; doneT=0; }
+            }
+          } else { flash = 0.35; idx = 0; SFX.bad(); }
+          break;
+        }
+      }
+    },
+    render(){
+      kitchenBG();
+      drawParts(0,0);
+      mgHeader(cfg.title, cfg.flavor);
+      if (flash>0){ cx.globalAlpha=flash; R(0,0,LW,LH,'#a02818'); cx.globalAlpha=1; }
+      // the food takes shape
+      const cxx=160, cyy=88;
+      if (cfg.icon==='dumpling'){
+        if (round===0) circle(cxx,cyy,10,'#f6ecd8');
+        else if (round===1){ circle(cxx,cyy,10,'#f6ecd8'); circle(cxx,cyy-2,4,'#c88a5a'); }
+        else drawDumpling(cxx,cyy,2.2);
+      } else {
+        if (round===0){ R(cxx-12,cyy-8,24,16,'#3e8b4e'); }
+        else if (round===1){ R(cxx-12,cyy-8,24,16,'#3e8b4e'); R(cxx-6,cyy-4,12,8,'#f6ecd8'); }
+        else drawZongzi(cxx,cyy,2.2);
+      }
+      if (state==='alldone'){
+        box(40,60,240,46);
+        T('PERFECT!', LW/2, 68, 9, '#f2b632','center');
+        T(cfg.doneLine, LW/2, 82, 6, '#f4e8d0','center');
+        T('✓ to continue', LW/2, 94, 5.4, '#cfc0a8','center');
+        return;
+      }
+      T('Batch '+(round+1)+' of '+cfg.lens.length+' — '+cfg.steps[round], LW/2, 34, 6, '#ffe9b0', 'center');
+      // arrow row
+      const n = seq.length, w = n*26, x0 = LW/2 - w/2 + 13;
+      for (let i=0;i<n;i++){
+        const ax = x0 + i*26;
+        R(ax-11, 119, 22, 22, i<idx ? 'rgba(242,182,50,0.25)' : 'rgba(20,12,16,0.7)');
+        R(ax-11, 119, 22, 1.4, '#c8a860'); R(ax-11, 140, 22, 1.4, '#c8a860');
+        R(ax-11, 119, 1.4, 22, '#c8a860'); R(ax+9.6, 119, 1.4, 22, '#c8a860');
+        drawArrow(ax, 130, seq[i], 7, i<idx ? '#f2b632' : i===idx ? '#ffffff' : '#8a7a68');
+        if (i===idx && Math.sin(G.time*7)>0) drawArrow(ax, 130, seq[i], 7, '#ffe98a');
+      }
+      T('Press the arrows in order!', LW/2, 152, 5.4, '#cfc0a8', 'center');
+      T('(wrong press just restarts the batch)', LW/2, 161, 4.8, '#9a8c78', 'center');
+    }
+  };
+}
+
+/* ---------- TIMING (firecrackers vs Nian, mooncake press) ---------- */
+function makeTiming(cfg, onDone){
+  let round = 0, t = 0, state = 'play', msg = '', msgT = 0, doneT = 0;
+  const speeds = cfg.speeds || [2.2, 2.8, 3.4];
+  const zones  = cfg.zones  || [30, 24, 18];
+  return {
+    update(dt){
+      t += dt; msgT = Math.max(0, msgT-dt);
+      updateParts(dt);
+      if (state==='done'){
+        doneT += dt;
+        if (just.a && doneT>0.6){ popScene(); onDone(); }
+        return;
+      }
+      if (just.a){
+        const pos = Math.sin(t*speeds[round])*100;   // -100..100
+        if (Math.abs(pos) < zones[round]/2){
+          round++;
+          if (cfg.onHit) cfg.onHit(round);
+          burst(160+pos*0.9, 118, ['#ff5838','#f2b632','#ffe98a'], 24, 60);
+          if (round >= speeds.length){ state='done'; doneT=0; SFX.win(); }
+          else { msg = pick(['GREAT!','NICE!','PERFECT!']); msgT = 0.8; }
+        } else {
+          msg = 'Missed! again…'; msgT = 0.8; SFX.bad();
+        }
+      }
+    },
+    render(){
+      cfg.drawScene(round, t, state==='done');
+      drawParts(0,0);
+      mgHeader(cfg.title, cfg.flavor);
+      if (state==='done'){
+        box(40,58,240,46);
+        T(cfg.doneTitle||'DONE!', LW/2, 66, 9, '#f2b632','center');
+        T(cfg.doneLine, LW/2, 80, 6, '#f4e8d0','center');
+        T('✓ to continue', LW/2, 92, 5.4, '#cfc0a8','center');
+        return;
+      }
+      T(cfg.roundLabels[round], LW/2, 34, 6, '#ffe9b0','center');
+      // the bar
+      const pos = Math.sin(t*speeds[round])*100;
+      R(52, 112, 216, 12, 'rgba(20,12,16,0.8)');
+      R(52, 112, 216, 1.4, '#c8a860'); R(52, 122.6, 216, 1.4, '#c8a860');
+      const zw = zones[round]*216/200;
+      R(160-zw/2, 112, zw, 12, 'rgba(242,60,40,0.55)');
+      R(160-zw/2, 112, 1.4, 12, '#ffe98a'); R(160+zw/2, 112, 1.4, 12, '#ffe98a');
+      R(160 + pos*1.08 - 1.5, 108, 3, 20, '#ffffff');
+      T('Press ✓ when the slider is in the RED zone!', LW/2, 130, 5.4, '#cfc0a8','center');
+      if (msgT>0) T(msg, LW/2, 98, 7.4, msg[0]==='M'?'#ff8a70':'#7ce87c', 'center');
+      T('Round '+(round+1)+' / '+speeds.length, LW/2, 141, 5, '#9a8c78','center');
+    }
+  };
+}
+
+/* ---------- RHYTHM (dragon boat race) ---------- */
+function makeRhythm(onDone){
+  const GOAL = 100, BPM = 104, BEAT = 60/BPM;
+  let me = 0, rival = 0, t = 0, lastSide = 'right', beatT = 0, beatN = 0;
+  let msg='', msgT=0, state='race', doneT=0, scroll=0;
+  function stroke(side){
+    if (state!=='race') return;
+    const near = Math.min(beatT, BEAT-beatT);
+    if (side === lastSide){ msg='Alternate ◀ ▶!'; msgT=0.6; me += 0.15; SFX.bad(); return; }
+    lastSide = side;
+    if (near < BEAT*0.3){ me += 2.6; msg=pick(['STROKE!','GO GO!','ON BEAT!']); msgT=0.4; SFX.drum(); }
+    else { me += 1.1; msg='off-beat… feel the drum'; msgT=0.5; noiseHit(0.06,0.15); }
+    burst(70+me*1.7, 128, ['#cfe4f4','#ffffff'], 6, 30);
+  }
+  return {
+    update(dt){
+      t += dt; msgT = Math.max(0,msgT-dt);
+      updateParts(dt);
+      if (state!=='race'){
+        doneT += dt;
+        if (just.a && doneT>0.6){
+          if (state==='win'){ popScene(); onDone(); }
+          else { me=0; rival=0; state='race'; msg=''; lastSide='right'; }
+        }
+        return;
+      }
+      beatT += dt;
+      if (beatT >= BEAT){ beatT -= BEAT; beatN++; SFX.drum(); }
+      rival += dt * 6.2;
+      if (just.left) stroke('left');
+      if (just.right) stroke('right');
+      scroll += dt * (14 + me*0.1);
+      if (me >= GOAL){ state='win'; doneT=0; SFX.win(); burst(240,80,['#f2b632','#ff5838','#7ce87c','#cfe4f4'],40,80); }
+      else if (rival >= GOAL){ state='lose'; doneT=0; SFX.bad(); }
+    },
+    render(){
+      // river scene
+      R(0,0,LW,52,'#bfe0f0');
+      R(0,30,LW,8,'#a8d0e4');
+      // far bank
+      R(0,44,LW,14,'#6fae4e');
+      for(let i=0;i<7;i++){ const bx=(i*60 - (scroll*0.5)%60); drawTree(bx, 56, i%2?'round':'pine', 2); }
+      R(0,58,LW,122,'#3a7ab2');
+      for(let i=0;i<40;i++){
+        const wx = (i*23 - (scroll*1.4)%23), wy = 66 + (i%7)*16;
+        cx.globalAlpha=0.5; R(wx, wy + Math.sin(G.time*2+i)*1.5, 12, 1.6, '#5c94c8'); cx.globalAlpha=1;
+      }
+      // crowd on near bank
+      R(0,168,LW,12,'#6fae4e');
+      // rival boat (top lane) & player boat
+      drawBoat(40 + rival*2.2, 92, G.time, {crew:true, seed:3, fast:false});
+      drawBoat(40 + me*2.2, 132, G.time, {crew:true, seed:1, fast:true});
+      T('YOU', 40+me*2.2-30, 124, 5.4, '#ffe9b0');
+      // finish line
+      const fx = 40 + GOAL*2.2 + 14;
+      for(let i=0;i<14;i++) R(fx, 62+i*8, 3, 5, i%2?'#f2b632':'#e03c28');
+      drawParts(0,0);
+      mgHeader('DRAGON BOAT RACE', 'Paddle ◀ ▶ alternating — on the DRUM beat!');
+      // drum pulse
+      const pu = 1 - clamp(beatT/BEAT,0,1);
+      drawDrum(24, 174, 1 + pu*0.35);
+      glow(24, 168, 10+pu*8, '#f2b632', 0.25*pu);
+      if (msgT>0) T(msg, LW/2, 40, 6.6, msg[0]==='S'||msg[0]==='G'||msg[0]==='O'?'#7ce87c':'#ffd0a0', 'center');
+      if (state==='win'){
+        box(46,58,228,50);
+        T('YOU WIN THE RACE!', LW/2, 66, 8.4, '#f2b632','center');
+        T('The drums thunder like they did for Qu Yuan.', LW/2, 80, 5.6, '#f4e8d0','center');
+        T('✓ to continue', LW/2, 94, 5.4, '#cfc0a8','center');
+      } else if (state==='lose'){
+        box(46,58,228,50);
+        T('SO CLOSE!', LW/2, 66, 8.4, '#ff8a70','center');
+        T('Stay with the drumbeat — alternate ◀ ▶.', LW/2, 80, 5.6, '#f4e8d0','center');
+        T('✓ to race again', LW/2, 94, 5.4, '#cfc0a8','center');
+      }
+    }
+  };
+}
+
+/* ---------- QUIZ / RIDDLES ---------- */
+function makeQuiz(questions, opts, onDone){
+  let idx = 0, sel = 0, state = 'ask', msgT = 0, lanternsUp = [];
+  return {
+    update(dt){
+      msgT += dt;
+      if (state==='ask'){
+        const n = questions[idx].a.length;
+        if (just.up){ sel=(sel+n-1)%n; SFX.blip(); }
+        if (just.down){ sel=(sel+1)%n; SFX.blip(); }
+        if (just.a){
+          if (sel === questions[idx].correct){
+            state='right'; msgT=0; SFX.good();
+            if (opts.lanterns) lanternsUp.push({x:rnd(40,280), y:190, s:rnd(0.7,1.1)});
+          } else { state='wrong'; msgT=0; SFX.bad(); }
+        }
+      } else if (just.a && msgT>0.4){
+        if (state==='right'){
+          idx++; sel=0;
+          if (idx >= questions.length){ popScene(); onDone(); return; }
+          state='ask';
+        } else state='ask';
+      }
+      for (const L of lanternsUp){ L.y -= dt*9; }
+    },
+    render(){
+      // night sky
+      R(0,0,LW,LH,'#141830');
+      for(let i=0;i<40;i++){ const h=thash(i,7); if (Math.sin(G.time*2+i)>-0.4) R(h*LW, (thash(i,13))*100, 1.4, 1.4, '#e8e4f4'); }
+      if (opts.moon) drawMoon(276, 34, 16, 0);
+      for (const L of lanternsUp){ drawLantern(L.x, L.y + Math.sin(G.time+L.x)*2, L.s, true, G.time); }
+      R(0,164,LW,16,'#1c2618');
+      mgHeader(opts.title, opts.sub);
+      const q = questions[idx];
+      const ql = wrap(q.q, 264, 6.4);
+      box(24, 38, 272, ql.length*9+8);
+      let yy=42; for (const ln of ql){ T(ln, LW/2, yy, 6.4, '#f4e8d0','center'); yy+=9; }
+      yy += 8;
+      q.a.forEach((opt,i)=>{
+        const w = textW(opt,6.4)+26;
+        const bx = LW/2-w/2;
+        box(bx, yy, w, 13, {border: i===sel?'#f2b632':'#6a5a48', bg: i===sel?'rgba(60,36,20,0.95)':'rgba(20,12,16,0.85)'});
+        if (i===sel) T('▶', bx+6, yy+2.6, 6, '#f2b632');
+        T(opt, LW/2+6, yy+2.6, 6.4, i===sel?'#ffe9b0':'#cfc0a8','center');
+        yy += 17;
+      });
+      if (state==='right'){
+        box(30, 128, 260, 26, {border:'#7ce87c'});
+        const yl = wrap(q.yay, 246, 5.8);
+        let y2=132; for (const ln of yl){ T(ln, LW/2, y2, 5.8, '#c8f4c0','center'); y2+=8; }
+        T('✓', 282, 146, 5.4, '#7ce87c');
+      } else if (state==='wrong'){
+        box(60, 128, 200, 18, {border:'#ff8a70'});
+        T('Hmm, not quite — try again!', LW/2, 133, 6, '#ffd0c0','center');
+      } else {
+        T('▲▼ choose · ✓ answer', LW/2, 156, 5, '#9a8c78','center');
+      }
+      T((idx+1)+' / '+questions.length, 300, 168, 5.4, '#9a8c78','center');
+    }
+  };
+}
+
+/* ---------- HOLD (sweeping) ---------- */
+function makeHold(cfg, onDone){
+  let prog = 0, doneT = 0, state='play';
+  return {
+    update(dt){
+      if (state==='done'){
+        doneT+=dt;
+        if (just.a && doneT>0.5){ popScene(); onDone(); }
+        return;
+      }
+      if (keys.a){
+        prog += dt*38;
+        if (Math.random()<0.4) spawnPart({x:rnd(120,200), y:rnd(120,140), vx:rnd(-20,20), vy:rnd(-30,-8), g:60, life:0.7, t:0, c:'#c8b696', sz:1.6});
+        if (Math.random()<0.1) SFX.blip();
+      }
+      updateParts(dt);
+      if (prog>=100){ state='done'; doneT=0; SFX.good(); }
+    },
+    render(){
+      R(0,0,LW,LH,'#6a5440');
+      for(let i=0;i<LW;i+=20) R(i,0,1,LH,'rgba(0,0,0,0.1)');
+      R(20,40,280,110,'#8a6c50');
+      R(20,40,280,4,'#a88054');
+      // dust piles shrink as you sweep
+      const d = Math.max(0, 1-prog/100);
+      for(let i=0;i<5;i++){
+        circle(60+i*50, 135, 8*d*(0.6+thash(i,3)*0.7), '#b8a284');
+      }
+      // broom-holding player
+      drawPerson(160, 130, {...PLAYER_LOOK, dir:'down', walk:keys.a}, G.time*2);
+      R(168, 100, 2, 26, '#8a6a48');
+      R(164, 124, 10, 5, '#c8a860');
+      drawParts(0,0);
+      mgHeader(cfg.title, cfg.flavor);
+      R(60, 158, 200, 8, 'rgba(20,12,16,0.8)');
+      R(60, 158, 200*clamp(prog/100,0,1), 8, '#f2b632');
+      if (state==='done'){
+        box(50,60,220,40);
+        T('SPOTLESS!', LW/2, 68, 8.4, '#f2b632','center');
+        T(cfg.doneLine, LW/2, 82, 5.8, '#f4e8d0','center');
+      } else {
+        T('HOLD ✓ to sweep!', LW/2, 34, 6.4, '#ffe9b0','center');
+      }
+    }
+  };
+}
+/* ============================================================
+   STORY — title, home, cutscenes, journal, chapter cards
+   ============================================================ */
+
+/* ---------- title screen ---------- */
+const titleScene = {
+  sel:0,
+  enter(){ playMusic(0); this.save = loadGame(); },
+  update(dt){
+    updateFade(dt); updateParts(dt);
+    const opts = this.menu();
+    if (just.up){ this.sel=(this.sel+opts.length-1)%opts.length; SFX.blip(); }
+    if (just.down){ this.sel=(this.sel+1)%opts.length; SFX.blip(); }
+    if (just.a){
+      SFX.select();
+      const o = opts[this.sel];
+      if (o==='NEW GAME'){
+        clearSave(); G.ch=0; G.step=0; G.scrolls=[]; G.flags={};
+        fadeOut(()=>{ swapScene(nameScene); fadeIn(); });
+      } else if (o==='CONTINUE'){
+        const s=this.save; G.name=s.name; G.ch=Math.max(1,s.ch); G.step=s.step; G.scrolls=s.scrolls||[];
+        fadeOut(()=>{ swapScene(makeChapterCard(G.ch, ()=>{ swapScene(world); fadeIn(); })); fadeIn(); });
+      } else if (o==='JOURNAL'){ pushScene(makeJournal()); }
+    }
+    if (Math.random()<dt*1.2) spawnPart({x:rnd(LW), y:186, vx:rnd(-3,3), vy:rnd(-14,-7), g:0, life:rnd(3,5), t:0, c:pick(['#ffb050','#ff7040']), sz:1.6});
+  },
+  menu(){ return this.save && this.save.ch>0 ? ['CONTINUE','NEW GAME','JOURNAL'] : ['NEW GAME','JOURNAL']; },
+  render(){
+    // night sky backdrop
+    R(0,0,LW,LH,'#181c38');
+    for(let i=0;i<60;i++){ const h=thash(i,5); if (Math.sin(G.time*1.5+i)>-0.5) R(h*LW, thash(i,11)*120, 1.4, 1.4, '#e8e4f4'); }
+    drawMoon(282, 32, 15, 0);
+    // village roofline silhouette
+    cx.fillStyle='#0e0a18';
+    cx.fillRect(0, 150*P, LW*P, 30*P);
+    for (let i=0;i<6;i++){ drawRoof(10+i*54, 142+((i%2)*4), 34); }
+    drawLantern(30, 96, 1.1, true, G.time);
+    drawLantern(290, 100, 1.1, true, G.time+2);
+    drawParts(0,0);
+    // dragon flies across
+    const dx = ((G.time*26) % (LW+140)) - 70;
+    drawLong(dx, 66 + Math.sin(G.time*1.8)*6, G.time, false);
+    // title
+    hanzi('节日', LW/2, 26, 15, 'rgba(242,182,50,0.35)');
+    Tsh('FESTIVAL', LW/2, 34, 17, '#f2b632', 'center');
+    Tsh('QUEST', LW/2, 52, 17, '#e03c28', 'center');
+    T('A Family Heritage journey through Chinese festivals', LW/2, 74, 5.4, '#cfc0a8', 'center');
+    // menu
+    const opts = this.menu();
+    opts.forEach((o,i)=>{
+      const y = 96+i*13;
+      if (i===this.sel){ T('❯', LW/2-textW(o,7)/2-10, y, 7, '#f2b632','left'); }
+      Tsh(o, LW/2, y, 7, i===this.sel?'#ffe9b0':'#b8a88e', 'center');
+    });
+    T('ARROWS/WASD move · ✓=Z/SPACE/ENTER · ✕=X · J journal · M mute', LW/2, 170, 4.6, '#8a7c6a', 'center');
+    drawFade();
+  }
+};
+
+/* ---------- name entry ---------- */
+const nameScene = {
+  enter(){ typedName=''; typingMode = true;
+    finishTyping = ()=>{ if (!typedName.trim()) typedName='You';
+      G.name = typedName.trim(); typingMode = false; SFX.select();
+      fadeOut(()=>{ swapScene(homeScene); homeScene.mode='intro'; fadeIn(); });
+    };
+  },
+  exit(){ typingMode=false; },
+  update(dt){
+    updateFade(dt);
+    // touch keyboard
+    if (tapPos){
+      const k = this.keyAt(tapPos.x, tapPos.y);
+      if (k==='<') typedName = typedName.slice(0,-1);
+      else if (k==='✓') finishTyping();
+      else if (k && typedName.length<8){ typedName+=k; SFX.blip(); }
+    }
+  },
+  keyAt(x,y){
+    const rows = ['ABCDEFGHIJ','KLMNOPQRST','UVWXYZ<✓'];
+    for (let r=0;r<3;r++){
+      const row=rows[r], w=row.length*17, x0=LW/2-w/2;
+      if (y>108+r*17 && y<108+r*17+15 && x>x0 && x<x0+w){
+        return row[Math.floor((x-x0)/17)];
+      }
+    }
+    return null;
+  },
+  render(){
+    R(0,0,LW,LH,'#181c38');
+    drawEnvelope(LW/2, 40, 1.6, G.time, true);
+    T('A red envelope waits for you…', LW/2, 60, 6.4, '#f4e8d0','center');
+    T('Whose name is on it?', LW/2, 71, 6.4, '#f4e8d0','center');
+    box(100, 84, 120, 16);
+    const nm = typedName + (Math.sin(G.time*5)>0?'_':' ');
+    T(nm, LW/2, 87, 8, '#ffe9b0','center');
+    // touch keys
+    const rows = ['ABCDEFGHIJ','KLMNOPQRST','UVWXYZ<✓'];
+    rows.forEach((row,r)=>{
+      const w=row.length*17, x0=LW/2-w/2;
+      for(let i=0;i<row.length;i++){
+        const ch=row[i];
+        box(x0+i*17, 108+r*17, 14, 14, {bg:'rgba(20,12,16,0.85)', border:'#5a4a3a'});
+        T(ch, x0+i*17+7, 111+r*17, 6.4, ch==='✓'?'#7ce87c':ch==='<'?'#ff8a70':'#cfc0a8','center');
+      }
+    });
+    T('type your name · ENTER when done', LW/2, 166, 5, '#8a7c6a','center');
+    drawFade();
+  }
+};
+
+/* ---------- home scene (intro + ending) ---------- */
+const homeScene = {
+  mode:'intro', px:160, py:140, dir:'up', walking:false, started:false,
+  enter(){ playMusic(0); this.started=false; this.px=160; this.py=146; },
+  update(dt){
+    updateFade(dt); updateParts(dt);
+    if (DLG.active){ dlgUpdate(dt); return; }
+    if (!this.started){
+      this.started = true;
+      if (this.mode==='intro') this.introTalk();
+      else this.endingTalk();
+      return;
+    }
+    // free walk
+    let vx=0,vy=0;
+    if (keys.left)vx=-1; else if(keys.right)vx=1;
+    if (keys.up)vy=-1; else if(keys.down)vy=1;
+    this.walking=!!(vx||vy);
+    if (vx&&vy){vx*=.707;vy*=.707;}
+    if (vx<0)this.dir='left'; else if(vx>0)this.dir='right'; else if(vy<0)this.dir='up'; else if(vy>0)this.dir='down';
+    const nx=clamp(this.px+vx*55*dt, 30, 290), ny=clamp(this.py+vy*55*dt, 92, 158);
+    // table collision
+    if (!(nx>96 && nx<226 && ny>106 && ny<140)) { this.px=nx; this.py=ny; }
+    else { if (!(nx>96&&nx<226)) this.px=nx; if (!(ny>106&&ny<140)) this.py=ny; }
+    // interact with Nai Nai
+    if (just.a && dist(this.px,this.py, 250,126)<30){
+      if (this.mode==='intro') this.envelopeTalk();
+      else this.finalTalk();
+    }
+    if (just.journal) pushScene(makeJournal());
+  },
+  introTalk(){
+    say([
+      {who:'Nǎi Nai', port:NAINAI_LOOK, text:"…"+G.name+"! There you are. Wash your hands — the dumplings are almost ready!"},
+      {who:'Ma', port:MA_LOOK, text:"Every New Year's Eve the WHOLE family eats together. That's how it has always been."},
+      {who:'Ba', port:BA_LOOK, text:"Fish for surplus, dumplings for luck… and if you're lucky, a red envelope or two, eh?"},
+      {who:'', text:"(Nǎi Nai is waving you over. Walk to her with the ARROW KEYS and press ✓.)"},
+    ]);
+  },
+  envelopeTalk(){
+    say([
+      {who:'Nǎi Nai', port:NAINAI_LOOK, text:"Before dinner — this is for you. A red envelope, hóngbāo, just like MY grandmother gave me."},
+      {who:'Nǎi Nai', port:NAINAI_LOOK, text:"The money inside is small. The WISHES inside are not. Luck, protection, a good year…"},
+      {who:G.name, port:PLAYER_LOOK, text:"Nǎi Nai… it's GLOWING?!"},
+      {who:'Nǎi Nai', port:NAINAI_LOOK, text:"Ah. So it chose you. Listen: our festivals live only as long as someone remembers WHY we keep them."},
+      {who:'Nǎi Nai', port:NAINAI_LOOK, text:"Open it, little one. Go learn the stories… and bring them home to me."},
+    ], ()=>{
+      SFX.gong();
+      burst(250, 116, ['#f2b632','#ff5838','#ffe98a'], 40, 70);
+      fadeOut(()=>{ swapScene(makeChapterCard(1, ()=>{
+        G.ch=1; G.step=0; saveGame();
+        world.px=470; world.py=150;
+        swapScene(world); fadeIn();
+      })); fadeIn(); }, 1.2);
+    });
+  },
+  endingTalk(){
+    say([
+      {who:'', text:"…and just like that, you are home. The dumplings are still steaming. No time has passed at all."},
+      {who:'Ma', port:MA_LOOK, text:G.name+"? You look like you've seen a dragon."},
+      {who:'', text:"(Walk to Nǎi Nai and press ✓.)"},
+    ]);
+  },
+  finalTalk(){
+    say([
+      {who:G.name, port:PLAYER_LOOK, text:"Nǎi Nai — the envelope — there was a village, and a beast called Nian, and a poet in the river, and the LADY ON THE MOON—"},
+      {who:'Nǎi Nai', port:NAINAI_LOOK, text:"Slow down, slow down! …So. You met them all."},
+      {who:G.name, port:PLAYER_LOOK, text:"Wait. How do YOU know what I—"},
+      {who:'Nǎi Nai', port:NAINAI_LOOK, text:"A girl with two hair buns once made dumplings with a traveler who had YOUR smile. I never forgot the recipe."},
+      {who:'Nǎi Nai', port:NAINAI_LOOK, text:"The stories are yours now, "+G.name+". Tonight at dinner, YOU tell them. At Mid-Autumn, YOU cut the mooncakes."},
+      {who:'Nǎi Nai', port:NAINAI_LOOK, text:"That is how a family keeps its lanterns lit."},
+    ], ()=>{
+      giveScroll('legacy');
+      fadeOut(()=> swapScene(creditsScene), 0.8);
+    });
+  },
+  render(){
+    // room
+    R(0,0,LW,90,'#7a4438');                       // wall
+    for(let i=0;i<LW;i+=26) R(i,0,1,90,'rgba(0,0,0,0.1)');
+    R(0,88,LW,92,'#9a7048');                      // floor
+    for(let i=0;i<LW;i+=24) R(i,88,1,92,'rgba(0,0,0,0.12)');
+    R(80,110,160,60,'#b04434');                   // rug
+    R(84,114,152,52,'#c85440');
+    // window (night + lantern outside)
+    R(30,16,50,38,'#101830');
+    R(30,16,50,3,'#5a3828'); R(30,51,50,3,'#5a3828'); R(30,16,3,38,'#5a3828'); R(77,16,3,38,'#5a3828'); R(53,16,3,38,'#5a3828');
+    drawMoon(66,28,7,0);
+    // couplets & fu on wall
+    R(120,20,10,42,'#d43424'); R(200,20,10,42,'#d43424');
+    hanzi('春', 125, 32, 6, '#f2b632'); hanzi('福', 125, 46, 6, '#f2b632');
+    hanzi('喜', 205, 32, 6, '#f2b632'); hanzi('樂', 205, 46, 6, '#f2b632');
+    R(154,24,24,24,'#d43424');
+    hanzi('福', 166, 37, 13, '#f2b632');
+    // shelf with teapot (+ paper dragon at the end)
+    R(250,34,50,4,'#5a3828');
+    R(258,26,14,8,'#3e7b6e'); R(270,28,4,3,'#3e7b6e'); R(262,22,6,4,'#3e7b6e');
+    if (this.mode==='ending'){ drawLong(288, 28, G.time*0.7, true); }
+    // feast table
+    drawTable(100,140,120);
+    drawFish(140,128,1.1);
+    drawDumpling(180,130,1.2); drawDumpling(196,127,1);
+    drawOrange(120,129); drawOrange(128,131);
+    if (this.mode==='ending') drawMooncake(214,129,0.9);
+    R(158,124,10,6,'#e8e4dc'); // rice bowl
+    // family
+    drawPerson(120,108,{...MA_LOOK, dir:'down'},G.time);
+    drawPerson(200,108,{...BA_LOOK, dir:'down'},G.time);
+    drawPerson(250,126,{...NAINAI_LOOK, dir:'left'},G.time);
+    if (this.mode==='intro') drawEnvelope(262,112,0.9,G.time,true);
+    // player
+    drawPerson(this.px,this.py,{...PLAYER_LOOK, dir:this.dir, walk:this.walking},G.time);
+    drawParts(0,0);
+    // prompt
+    if (!DLG.active && dist(this.px,this.py,250,126)<30){
+      box(120,96,80,11,{bg:'rgba(20,12,16,0.85)', border:'#c8a860'});
+      T('✓ Nǎi Nai', 160, 98, 5.4, '#ffd964','center');
+    }
+    dlgRender();
+    drawFade();
+  }
+};
+
+/* ---------- chapter title cards ---------- */
+function makeChapterCard(ch, onDone){
+  const CARDS = {
+    1:{ big:'THE NIGHT OF NIAN', small:'Chapter One · Lunar New Year', h:'春节', draw:(t)=>{ drawLantern(70,60,1.6,true,t); drawLantern(250,60,1.6,true,t+1); } },
+    2:{ big:'THE RIVER REMEMBERS', small:'Chapter Two · Dragon Boat Festival', h:'端午节', draw:(t)=>{ drawBoat(160, 120, t, {crew:true}); } },
+    3:{ big:'THE ROUNDEST MOON', small:'Chapter Three · Mid-Autumn Festival', h:'中秋节', draw:(t)=>{ drawMoon(160, 60, 22, 0.3); } },
+  };
+  let t=0;
+  return {
+    enter(){ SFX.gong(); },
+    update(dt){ t+=dt; updateFade(dt); if (t>1 && just.a || t>4.2){ onDone(); } },
+    render(){
+      R(0,0,LW,LH,'#141020');
+      const c=CARDS[ch];
+      c.draw(G.time);
+      hanzi(c.h, LW/2, 40, 13, 'rgba(242,182,50,0.4)');
+      Tsh(c.big, LW/2, 78, 11, '#f2b632','center');
+      T(c.small, LW/2, 96, 6, '#cfc0a8','center');
+      R(LW/2-40, 108, 80, 1, '#a03428');
+      if (t>1) T('✓', LW/2, 150, 6, Math.sin(G.time*5)>0?'#f2b632':'#8a7c6a','center');
+      drawFade();
+    }
+  };
+}
+
+/* ---------- story cutscenes (illustrated pages) ---------- */
+function makeStory(pages, onDone){
+  let idx=0, t=0;
+  return {
+    update(dt){
+      t+=dt; updateFade(dt);
+      if (just.a && t>0.5){
+        SFX.blip(); idx++; t=0;
+        if (idx>=pages.length){ popScene(); onDone(); }
+      }
+    },
+    render(){
+      const pg = pages[idx]; if (!pg) return;
+      R(0,0,LW,LH,'#100c1c');
+      // scroll-painting frame
+      R(24,10,272,118,'#e8dcc0');
+      R(24,10,272,4,'#a03428'); R(24,124,272,4,'#a03428');
+      R(20,8,4,124,'#8a6a3a'); R(296,8,4,124,'#8a6a3a');
+      cx.save();
+      cx.beginPath(); cx.rect(28*P,16*P,264*P,106*P); cx.clip();
+      pg.draw(G.time);
+      cx.restore();
+      // caption
+      const lines = wrap(pg.text, 284, 6.2);
+      box(12, 134, 296, lines.length*9+10);
+      let yy=139; for (const ln of lines){ T(ln, LW/2, yy, 6.2, '#f4e8d0','center'); yy+=9; }
+      T((idx+1)+'/'+pages.length+'  ✓', 290, 124, 5, '#8a7c6a');
+      drawFade();
+    }
+  };
+}
+const quYuanPages = [
+  { text:'Old Wen: "Twenty-three centuries ago, in the southern kingdom of CHU, lived Qu Yuan — a poet, and the king\'s most honest minister."',
+    draw:(t)=>{ R(28,16,264,106,'#d8c8a0');
+      drawRoof(64,48,72);
+      R(70,52,60,46,'#c05840');
+      R(70,52,5,46,'#8a2c20'); R(125,52,5,46,'#8a2c20'); R(96,52,4,46,'#8a2c20');
+      R(80,74,12,24,'#5a2418'); R(108,74,12,24,'#5a2418');
+      drawPerson(180,100,{skin:'#dcb27c',hair:'#181418',top:'#6a3a8a',pants:'#3a2a4a',dir:'down'},0);
+      R(210,70,16,22,'#e8dcc0'); R(210,70,16,3,'#a03428');
+      hanzi('詩', 218, 82, 8, '#3a2a4a');
+    }},
+  { text:'"He warned of danger. No one listened. When Chu fell to its enemy, his heart broke with it — and he gave himself to the MILUO RIVER."',
+    draw:(t)=>{ R(28,16,264,106,'#4a5a7a');
+      R(28,80,264,42,'#2a4a7a');
+      for(let i=0;i<12;i++) R(30+i*22, 86+Math.sin(t*1.5+i)*2, 14, 2, '#3a5e94');
+      drawPerson(160,80,{skin:'#dcb27c',hair:'#181418',top:'#6a3a8a',pants:'#3a2a4a',dir:'down'},0);
+      drawMoon(260,36,10,0.5);
+      cx.globalAlpha=0.5; R(28,16,264,106,'#1a2038'); cx.globalAlpha=1;
+    }},
+  { text:'"The people LOVED him. They raced out in boats, pounding drums and splashing oars to scare the fish, throwing rice so the river would spare him. We have raced ever since."',
+    draw:(t)=>{ R(28,16,264,106,'#5a7ab2');
+      for(let i=0;i<10;i++) R(30+i*26, 40+((i%3)*24)+Math.sin(t*2+i)*2, 18, 2, '#7a9ac8');
+      drawBoat(110, 70, t, {crew:true, fast:true});
+      drawBoat(230, 96, t+1, {crew:true, fast:true});
+      for(let i=0;i<6;i++) R(60+i*36, 50+((i%2)*8), 2, 2, '#f6ecd8');
+    }},
+];
+const changePages = [
+  { text:'Mei: "Long, long ago, TEN suns rose at once and scorched the earth. The great archer HOU YI shot down nine of them and saved us all."',
+    draw:(t)=>{ R(28,16,264,106,'#c86840');
+      for(let i=0;i<9;i++) circle(50+i*24, 30+(i%2)*10, 6, i===4?'#ffe98a':'#ff9040');
+      circle(154, 26, 8, '#ffe98a');
+      drawPerson(90,110,{skin:'#d8a878',hair:'#181418',top:'#8a2828',pants:'#3a2a2a',dir:'right'},0);
+      R(100,84,2,18,'#5a3828'); R(96,90,10,2,'#5a3828');
+    }},
+  { text:'"He was rewarded with an elixir of immortality. But a thief came for it — so Hou Yi\'s wife CHANG\'E drank it to keep it safe… and floated up, up, up."',
+    draw:(t)=>{ R(28,16,264,106,'#2a2a54');
+      for(let i=0;i<30;i++) R(thash(i,3)*260+30, thash(i,9)*100+16, 1.4, 1.4, '#e8e4f4');
+      const fy = 90 - (Math.sin(t*0.8)*4+8);
+      drawPerson(160,fy,{skin:'#eac086',hair:'#181418',top:'#e8e0f4',pants:'#c8c0e4',dir:'down'},0);
+      glow(160, fy-10, 16, '#e8e0ff', 0.3);
+      drawMoon(250, 34, 12, 0);
+    }},
+  { text:'"Now she lives in the Moon Palace with the JADE RABBIT. Every year Hou Yi set out her favorite foods under the full moon. That is why we gather when the moon is roundest — the whole family, together."',
+    draw:(t)=>{ R(28,16,264,106,'#1a2038');
+      drawMoon(160, 50, 26, 0);
+      drawTable(120,110,80);
+      drawMooncake(140,101,0.9); drawMooncake(160,99,1.1); drawOrange(180,101);
+      for(let i=0;i<20;i++) R(thash(i,7)*260+30, thash(i,17)*40+16, 1.4, 1.4, '#e8e4f4');
+    }},
+];
+
+/* ---------- journal & sources ---------- */
+function makeJournal(){
+  let sel=0, mode='list', page=0;
+  const entries = SCROLL_ORDER.map(id=>({id, got:G.scrolls.includes(id)}));
+  return {
+    overlay:true,
+    update(dt){
+      if (mode==='read'){
+        if (just.a || just.b){ mode='list'; SFX.back(); }
+        return;
+      }
+      if (mode==='sources'){
+        if (just.a || just.b){ mode='list'; SFX.back(); }
+        return;
+      }
+      const n = entries.length+1;
+      if (just.up){ sel=(sel+n-1)%n; SFX.blip(); }
+      if (just.down){ sel=(sel+1)%n; SFX.blip(); }
+      if (just.a){
+        if (sel===entries.length){ mode='sources'; SFX.select(); }
+        else if (entries[sel].got){ mode='read'; SFX.select(); }
+        else SFX.bad();
+      }
+      if (just.b || just.journal){ popScene(); SFX.back(); }
+    },
+    render(){
+      cx.fillStyle='rgba(8,6,12,0.88)'; cx.fillRect(0,0,LW*P,LH*P);
+      if (mode==='read'){
+        const s = SCROLLS[entries[sel].id];
+        box(30, 20, 260, 140, {border:'#c8a860', bg:'#f0e4c8'});
+        drawScrollItem(50, 42, G.time);
+        T(s.title, 64, 28, 7.4, '#7a2418');
+        R(40, 44, 240, 1, '#a03428');
+        const lines = wrap(s.text, 236, 6);
+        let yy=52; for (const ln of lines){ T(ln, 42, yy, 6, '#3a2418'); yy+=9; }
+        T('✓ back', 276, 150, 5, '#8a6a48','right');
+        return;
+      }
+      if (mode==='sources'){
+        box(20, 14, 280, 152, {border:'#c8a860'});
+        T('RESEARCH SOURCES', LW/2, 20, 8, '#f2b632','center');
+        T('Every fact in this game came from real research:', LW/2, 33, 5.4, '#cfc0a8','center');
+        let yy=46;
+        SOURCES_LIST.forEach(s=>{
+          T('• '+s[0], 30, yy, 5.4, '#f4e8d0'); yy+=8;
+          T('   '+s[1]+' — '+s[2], 30, yy, 5, '#b8a88e'); yy+=11;
+        });
+        T('Full citations: see the Works Cited page', LW/2, 148, 5.2, '#cfc0a8','center');
+        T('✓ back', 288, 158, 5, '#8a6a48','right');
+        return;
+      }
+      box(16, 10, 288, 160, {border:'#c8a860'});
+      T('WISDOM SCROLL JOURNAL', LW/2, 15, 8, '#f2b632','center');
+      T(G.scrolls.length+' of '+SCROLL_ORDER.length+' collected', LW/2, 27, 5.4, '#cfc0a8','center');
+      const perCol = 9, colW = 140;
+      const visible = entries.length+1;
+      for (let i=0;i<visible;i++){
+        const col = Math.floor(i/perCol), row = i%perCol;
+        const x = 26+col*colW, y = 40+row*13;
+        const isSrc = i===entries.length;
+        const label = isSrc ? '★ RESEARCH SOURCES' : (entries[i].got ? SCROLLS[entries[i].id].title : '? ? ?');
+        if (i===sel){ R(x-3, y-1.5, colW-8, 12, 'rgba(242,182,50,0.2)'); T('▶', x-1, y, 5.4, '#f2b632'); }
+        T(label, x+8, y, 5.4, isSrc ? '#ffd964' : entries[i].got ? '#f4e8d0' : '#6a5c50');
+      }
+      T('▲▼ pick · ✓ read · ✕ close', LW/2, 162, 5, '#8a7c6a','center');
+    }
+  };
+}
+
+/* ---------- credits ---------- */
+const creditsScene = {
+  t:0,
+  enter(){ this.t=0; playMusic(3); G.ch=4; saveGame(); },
+  update(dt){
+    this.t+=dt; updateFade(dt); updateParts(dt);
+    if (Math.random()<dt*2) spawnPart({x:rnd(LW), y:186, vx:0, vy:rnd(-16,-8), g:0, life:rnd(3,6), t:0, c:pick(['#ffb050','#ff7040','#ffe98a']), sz:1.8});
+    if (just.a && this.t>2){ pushScene(makeJournal()); }
+    if (just.b && this.t>2){ swapScene(titleScene); }
+  },
+  render(){
+    R(0,0,LW,LH,'#141020');
+    for(let i=0;i<40;i++){ const h=thash(i,5); R(h*LW, thash(i,11)*90, 1.4, 1.4, '#e8e4f4'); }
+    drawMoon(160, 34, 18, 0);
+    drawParts(0,0);
+    Tsh('THE STORIES ARE LIT', LW/2, 62, 10, '#f2b632','center');
+    T('You collected '+G.scrolls.length+' of '+SCROLL_ORDER.length+' Wisdom Scrolls', LW/2, 82, 6, '#f4e8d0','center');
+    T('FESTIVAL QUEST', LW/2, 100, 6.4, '#e03c28','center');
+    T('A 7th Grade Family Heritage Project', LW/2, 111, 5.4, '#cfc0a8','center');
+    T('about the festivals of Chinese culture', LW/2, 120, 5.4, '#cfc0a8','center');
+    T('Story facts: see Research Sources in the Journal', LW/2, 134, 5, '#9a8c78','center');
+    T('✓ open journal · ✕ title screen', LW/2, 156, 5.4, '#8a7c6a','center');
+    drawFade();
+  }
+};
+/* ============================================================
+   QUESTS — NPC dialogue, chapter logic, ceremonies
+   ============================================================ */
+
+function setStep(n){ G.step = n; saveGame(); }
+function port(id){ return NPCS[id].look; }
+
+/* ---------- house decorations per chapter ---------- */
+function houseDecor(h){
+  if (G.ch===1) return { couplets:G.step>3, fu:G.step>3, lanterns:true, lit:G.night>0.25 };
+  if (G.ch===2) return { couplets:true, fu:true, lanterns:true, lit:false };
+  return { couplets:true, fu:true, lanterns:true, lit:G.step>=3 };
+}
+
+/* ---------- extra scenery per chapter ---------- */
+function chapterScenery(items, cam, camY, lights){
+  // lantern poles (all chapters; lit depends on story)
+  POLES.forEach((p,i)=>{
+    const lit = (G.ch===1 && G.step>=6) || (G.ch===3 && G.flags['pole'+i]);
+    items.push({y:p[1], f:()=>{
+      R(p[0]-cam-1.5, p[1]-camY-26, 3, 26, '#6a4a34');
+      R(p[0]-cam-1, p[1]-camY-27, 9, 2, '#6a4a34');
+      drawLantern(p[0]-cam+7, p[1]-camY-26, 1, lit, G.time);
+      if (lit) lights.push({x:p[0]-cam+7, y:p[1]-camY-18, r:16});
+    }});
+  });
+  if (G.ch===2){
+    items.push({y:316, f:()=> drawBoat(700-cam, 310-camY, G.time, {seed:2})});
+    items.push({y:302, f:()=> drawBoat(790-cam, 296-camY, G.time, {seed:5})});
+    if (G.step===3){
+      MUGWORT.forEach((m,i)=>{
+        if (!G.flags['mug'+i]) items.push({y:m[1], f:()=> drawMugwort(m[0]-cam, m[1]-camY, G.time)});
+      });
+    }
+    if (G.step>=5){
+      for (const h of HOUSES){
+        const dx = h.x + (h.door!==undefined?h.door:Math.floor(h.w/2)-5);
+        items.push({y:h.y+h.ht+1, f:()=> drawMugwort(dx-cam-3, h.y+h.ht-10-camY, G.time)});
+      }
+    }
+  }
+  if (G.ch===3 && G.step>=4){
+    items.push({y:224, f:()=>{
+      drawTable(420-cam, 224-camY, 62);
+      drawMooncake(436-cam, 215-camY, 0.9); drawMooncake(456-cam, 213-camY, 1.1); drawOrange(472-cam, 215-camY);
+    }});
+    items.push({y:232, f:()=>{
+      drawTable(500-cam, 232-camY, 62);
+      drawFish(520-cam, 222-camY, 1); drawDumpling(544-cam, 224-camY, 1); drawOrange(552-cam, 221-camY);
+    }});
+    // overhead lantern string across the plaza
+    items.push({y:99999, f:()=>{
+      for(let x=396; x<=564; x+=28){
+        const sy = 168 + Math.sin(x*0.3)*3;
+        R(x-cam-14, sy-camY-2, 28, 1, 'rgba(120,80,40,0.8)');
+        drawLantern(x-cam, sy-camY, 0.8, true, G.time+x);
+        lights.push({x:x-cam, y:sy-camY+6, r:13});
+      }
+    }});
+  }
+}
+
+/* ---------- per-frame chapter logic ---------- */
+function chapterTick(dt){
+  let nt = 0;
+  if (G.ch===1 && G.step>=5) nt = 0.66;
+  if (G.ch===3) nt = G.step>=3 ? 0.5 : 0.36;
+  G.night = lerp(G.night, nt, clamp(dt*1.2,0,1));
+
+  if (DLG.active || fade.a>0.05) return;
+  if (G.ch===1 && G.step===0 && !G.flags.ch1intro){
+    G.flags.ch1intro = true;
+    say([
+      {who:'???', port:LONG_PORTRAIT, text:"Whoa—! You can SEE me? Excellent. Most people stopped looking ages ago."},
+      {who:'Lóng', port:LONG_PORTRAIT, text:"I am Lóng, keeper of this village's stories. And this is HERITAGE VILLAGE — the place your family's festivals come from."},
+      {who:'Lóng', port:LONG_PORTRAIT, text:"But look how DIM everything is. When stories are forgotten, their light goes out. Three treasures hold that light: a Lantern, a Drum, and a Mirror."},
+      {who:'Lóng', port:LONG_PORTRAIT, text:"Tonight is NEW YEAR'S EVE — the biggest night of the year. Elder Shan at the TEA HOUSE will explain. I'll be right behind you!"},
+    ], ()=> setStep(1));
+  }
+  if (G.ch===1 && G.step===5 && !G.flags.nianGo){
+    G.flags.nianGo = true;
+    say([
+      {who:'Lóng', port:LONG_PORTRAIT, text:"The sun is setting. …Do you hear that?"},
+      {who:'', text:"THUMP. THUMP. THUMP. Something enormous is wading out of the sea."},
+      {who:'Lóng', port:LONG_PORTRAIT, text:"NIAN. To the plaza — NOW! Remember what we prepared: RED! LIGHT! NOISE!"},
+    ], ()=>{
+      fadeOut(()=>{ pushScene(makeNianBattle()); fadeIn(); });
+    });
+  }
+  if (G.ch===2 && G.step===0 && !G.flags.ch2intro){
+    G.flags.ch2intro = true;
+    say([
+      {who:'Lóng', port:LONG_PORTRAIT, text:"Feel that heat? The seasons spin fast here. It's the FIFTH day of the FIFTH month — the DRAGON BOAT FESTIVAL!"},
+      {who:'Lóng', port:LONG_PORTRAIT, text:"…But listen. No drums. A race with no thunder is just rowing. Find Captain Yu at the dock, south side."},
+    ]);
+  }
+  if (G.ch===3 && G.step===0 && !G.flags.ch3intro){
+    G.flags.ch3intro = true;
+    say([
+      {who:'Lóng', port:LONG_PORTRAIT, text:"Autumn dusk already. Eighth month, fifteenth day — MID-AUTUMN. The moon should be blinding tonight…"},
+      {who:'Lóng', port:LONG_PORTRAIT, text:"…but look at her. Veiled and gray. Mei is waiting for you on the dock. Go — she shouldn't wait alone."},
+    ]);
+  }
+  if (G.ch===3 && G.step===3 && !G.flags.feastGo){
+    let all = true;
+    for (let i=0;i<POLES.length;i++) if (!G.flags['pole'+i]) all = false;
+    if (all){
+      G.flags.feastGo = true;
+      ['elder','mei','hua','bo','zhu','fang','yu','wen'].forEach((id,i)=>{
+        const spots = [[468,198],[448,232],[500,198],[524,232],[438,216],[540,216],[488,236],[452,216]];
+        npcMoved(id, spots[i][0], spots[i][1], 'down');
+      });
+      say([
+        {who:'Lóng', port:LONG_PORTRAIT, text:"LOOK at the village glow! Everyone's heading to the plaza with food and stories. Go — join your feast."},
+      ], ()=> setStep(4));
+    }
+  }
+}
+
+/* ---------- the Nian battle (timing minigame with a big scene) ---------- */
+function makeNianBattle(){
+  let fledT = -1;
+  const cfg = {
+    title:'NIAN AT THE GATES', flavor:'Red! Light! Noise!',
+    roundLabels:['Unfurl the RED banners!','Light EVERY lantern!','FIRECRACKERS! NOW!'],
+    speeds:[2.0,2.6,3.2], zones:[34,26,20],
+    doneTitle:'GUO NIAN!', doneLine:'The beast flees! You have "passed over" the year!',
+    onHit(r){ SFX.boom(); if (r>=3) SFX.win(); },
+    drawScene(progress, t, done){
+      R(0,0,LW,LH,'#10102a');
+      for(let i=0;i<30;i++){ const h=thash(i,5); R(h*LW, thash(i,11)*60, 1.2, 1.2, '#8a8ab4'); }
+      R(0,150,LW,30,'#1c1830');
+      // tea house backdrop (kept high so the timing bar stays clear)
+      drawHouse({x:110,y:58,w:78,ht:34,door:32,sign:'TEA HOUSE'},
+        {couplets:progress>=1, fu:progress>=1, lanterns:true, lit:progress>=2});
+      if (progress>=1){ R(98,62,6,28,'#d43424'); R(216,62,6,28,'#d43424'); }
+      if (progress>=2){ drawLantern(56,52,1.2,true,t); drawLantern(264,52,1.2,true,t+1);
+        glow(56,62,16,'#ffaa50',0.3); glow(264,62,16,'#ffaa50',0.3); }
+      // villagers huddle right
+      drawPerson(268,148,{...port('elder'), dir:'left'},t);
+      drawPerson(288,152,{...port('mei'), dir:'left'},t);
+      drawPerson(300,146,{...port('hua'), dir:'left'},t);
+      // you, standing your ground
+      drawPerson(240,152,{...PLAYER_LOOK, dir:'left'},t);
+      // NIAN
+      if (done){
+        if (fledT<0) fledT = t;
+        const fx = 60 - (t-fledT)*90;
+        if (fx > -80) drawNian(fx, 150, t*3);
+        if (Math.random()<0.1) burst(rnd(60,260), rnd(40,100), ['#ff5838','#f2b632','#7ce87c','#cfe4f4'], 16, 60);
+      } else {
+        const shake = progress>0 ? Math.sin(t*30)*progress : 0;
+        drawNian(64 - progress*16 + shake, 150, t);
+        T('GRRRRRAAAAAH!', 70, 96, 6, '#ff5030');
+      }
+      drawParts(0,0);
+    }
+  };
+  const scene = makeTiming(cfg, ()=>{
+    say([
+      {who:'Elder Shan', port:port('elder'), text:"GUO NIAN! WE HAVE PASSED THE YEAR! Ha-HA! Did you SEE it run?!"},
+      {who:'Lóng', port:LONG_PORTRAIT, text:"It won't dare come back for a whole year. And when it does — we'll be ready. We always are. THAT is why the New Year is loud and red."},
+      {who:'Elder Shan', port:port('elder'), text:"Find me at the tea house, child. Dawn brings one more tradition — the sweetest one of all."},
+    ], ()=> setStep(6));
+  });
+  return scene;
+}
+
+/* ---------- ceremonies ---------- */
+function ceremony(flagName, lines, after){
+  G.flags[flagName] = true;
+  SFX.gong();
+  burst(world.px, world.py-30, ['#f2b632','#ff5838','#ffe98a','#7ce87c'], 46, 80);
+  say(lines, after);
+}
+
+/* ---------- NPC talk trees ---------- */
+const talks = {
+  long(){
+    const L = LONG_PORTRAIT;
+    if (G.ch===1){
+      if (G.step===7){
+        say([
+          {who:'Lóng', port:L, text:"One more thing. A keeper of stories must KNOW the stories. Quick check — ready?"},
+        ], ()=> pushScene(makeQuiz(QUIZ_CH1, {title:'LÓNG\'S STORY CHECK', sub:'Chapter One', moon:false}, ()=>{
+          ceremony('t1', [
+            {who:'Lóng', port:L, text:"PERFECT! Look — the RED LANTERN remembers its light!"},
+            {who:'Lóng', port:L, text:"And it will burn for FIFTEEN days — all the way to the Lantern Festival at the first full moon, with lion dances and parades."},
+            {who:'Lóng', port:L, text:"One treasure lit. Two to go. Close your eyes — the river is calling us to SUMMER."},
+          ], ()=>{
+            giveScroll('fifteen');
+            fadeOut(()=>{ G.ch=2; G.step=0; G.night=0; saveGame();
+              swapScene(makeChapterCard(2, ()=>{ world.px=560; world.py=200; swapScene(world); fadeIn(); }));
+              fadeIn();
+            });
+          });
+        })));
+      }
+      else say([{who:'Lóng', port:L, text: [
+        "Elder Shan, at the tea house with the big sign. Go go go!",
+        "Auntie Hua needs sweeping help — her house, second from the west.",
+        "Uncle Bo is by his door with the couplets, east side of the street.",
+        "Mei's kitchen smells AMAZING. Westmost house. Dumpling time!",
+        "To the plaza! RED! LIGHT! NOISE!",
+        "Elder Shan wants to see you at the tea house. Trust me, you'll like this one.",
+      ][clamp(G.step,0,6)] || "Onward!"}]);
+    }
+    else if (G.ch===2){
+      if (G.step===6){
+        say([
+          {who:'Lóng', port:L, text:"Story check, river edition! Ready?"},
+        ], ()=> pushScene(makeQuiz(QUIZ_CH2, {title:'LÓNG\'S STORY CHECK', sub:'Chapter Two', moon:false}, ()=>{
+          ceremony('t2', [
+            {who:'Lóng', port:L, text:"YES! Hear that? The DRAGON DRUM beats on its own again!"},
+            {who:'Lóng', port:L, text:"And here's something even Captain Yu forgets: in 2009 this festival became the FIRST Chinese festival on UNESCO's world heritage list. The whole world guards this story now."},
+            {who:'Lóng', port:L, text:"Two treasures lit! Only the moon is still dark. Close your eyes — autumn is falling…"},
+          ], ()=>{
+            giveScroll('unesco');
+            fadeOut(()=>{ G.ch=3; G.step=0; G.night=0.3; saveGame();
+              swapScene(makeChapterCard(3, ()=>{ world.px=520; world.py=200; swapScene(world); fadeIn(); }));
+              fadeIn();
+            });
+          });
+        })));
+      }
+      else say([{who:'Lóng', port:L, text: [
+        "Captain Yu, at the dock — follow the lane south from the bakery.",
+        "Old Wen keeps the shrine on the WEST side. He tells it best.",
+        "Granny Zhu is by the well. Zongzi don't wrap themselves!",
+        "Mugwort grows along the riverbank — the feathery green sprigs. Find three!",
+        "Bring those herbs back to Granny Zhu!",
+        "To the dock! Make those drums THUNDER!",
+      ][clamp(G.step,0,5)] || "Onward!"}]);
+    }
+    else if (G.ch===3){
+      if (G.step===5){
+        say([
+          {who:'Lóng', port:L, text:"Almost there. On Mid-Autumn night we hang RIDDLES from lanterns — answer one, and a lantern rises. Shall we play the oldest game?"},
+        ], ()=> pushScene(makeQuiz(RIDDLES, {title:'LANTERN RIDDLES', sub:'answer & watch them rise', moon:true, lanterns:true}, ()=>{
+          G.flags.moonlit = true;
+          ceremony('t3', [
+            {who:'Lóng', port:L, text:"LOOK UP!"},
+            {who:'', text:"The veil slides off the moon like silk. Light pours over the village — the roofs, the river, the lanterns, every upturned face."},
+            {who:'Lóng', port:L, text:"The MOON MIRROR shines. Lantern, Drum, Mirror — every story is lit again. Because of YOU."},
+          ], ()=> setStep(6));
+        })));
+      }
+      else if (G.step===6){
+        say([
+          {who:'Mei', port:port('mei'), text:"Before you go… here. A red envelope. My favorite tradition."},
+          {who:'Mei', port:port('mei'), text:"Give it back to me someday — oh, in about fifty years. Promise?"},
+          {who:G.name, port:PLAYER_LOOK, text:"…Deal. But that's a weird thing to— wait. Two hair buns. Dumpling recipe. NO WAY—"},
+          {who:'Lóng', port:LONG_PORTRAIT, text:"Nǎi Nai is waiting for her dumplings, little keeper. Close your eyes."},
+        ], ()=>{
+          fadeOut(()=>{ homeScene.mode='ending'; swapScene(homeScene); fadeIn(); });
+        });
+      }
+      else say([{who:'Lóng', port:LONG_PORTRAIT, text: [
+        "Mei is on the dock, watching the gray moon. Go sit with her.",
+        "Listen to the whole story — it's my favorite one.",
+        "Baker Fang's ovens are hot. The bakery is the east house with the sign!",
+        "Five lantern poles around the village. Light them ALL.",
+        "Join the feast in the plaza! Elder Shan is telling stories.",
+      ][clamp(G.step,0,4)] || "Onward!"}]);
+    }
+  },
+
+  elder(){
+    const E = port('elder');
+    if (G.ch===1){
+      if (G.step===1) say([
+        {who:'Elder Shan', port:E, text:"You must be the traveler Lóng brought. Good. Tonight we need every pair of hands — and every drop of courage."},
+        {who:'Elder Shan', port:E, text:"Long ago, a beast called NIAN crawled from the sea EVERY New Year's Eve to raid this village. We fled to the mountains… until we learned its three fears."},
+        {who:'Elder Shan', port:E, text:"The color RED. Bright LIGHT. And loud NOISE. That is why we paste red couplets, light every lantern, and save our loudest firecrackers for tonight."},
+        {who:'Elder Shan', port:E, text:"We even named the holiday for it: 'Guo Nian' — to PASS OVER the year… and the beast. Now hurry: Auntie Hua first! A clean house makes room for new luck."},
+      ], ()=>{ giveScroll('nian'); giveScroll('guonian'); setStep(2); });
+      else if (G.step===6) say([
+        {who:'Elder Shan', port:E, text:"There you are! Hold out both hands, child. This is HÓNGBĀO — a red envelope of lucky money."},
+        {who:'Elder Shan', port:E, text:"Its old name is yāsuìqián: 'money that presses down evil spirits.' The coins are small. The WISHES are enormous — luck and protection from your elders, sealed in red."},
+        {who:'', text:"(You received a red envelope! It is warm, somehow.)"},
+      ], ()=>{ giveScroll('hongbao'); setStep(7); });
+      else say([{who:'Elder Shan', port:E, text: G.step<6 ? "Red, light, noise. Say it in your sleep: RED, LIGHT, NOISE." : "In my day, I could light a whole string of firecrackers with one match. …Don't tell your grandmother I said that."}]);
+    }
+    else if (G.ch===2) say([{who:'Elder Shan', port:E, text:"Qu Yuan's poems are older than every stone in this village. Old Wen recites them at the shrine — go listen."}]);
+    else { // ch3
+      if (G.step===4) say([
+        {who:'Elder Shan', port:E, text:"Sit, sit! Mooncake? Tonight the moon turns three THOUSAND. This festival began long ago as a harvest thank-you to her."},
+        {who:'Elder Shan', port:E, text:"Tang dynasty emperors made moon-gazing famous. By the Song dynasty, whole cities celebrated till dawn. And the cakes? Round, like the moon. Round, like a family — tuányuán, reunion."},
+        {who:'Elder Shan', port:E, text:"The same moon shines on every member of a family, no matter how far apart they are. Remember that, when you are far from home."},
+      ], ()=>{ giveScroll('midautumn'); setStep(5); });
+      else say([{who:'Elder Shan', port:E, text:"A festival is a promise a family keeps with itself, year after year after year."}]);
+    }
+  },
+
+  hua(){
+    const H = port('hua');
+    if (G.ch===1 && G.step===2) say([
+      {who:'Auntie Hua', port:H, text:"Ai-ya, this DUST! Before the new year arrives we sweep everything — swoosh, out with the old year's bad luck!"},
+      {who:'Auntie Hua', port:H, text:"Grab that broom. Put your back into it!"},
+    ], ()=> pushScene(makeHold({title:"AUNTIE HUA'S BIG SWEEP", flavor:'Out with the old luck!', doneLine:'Room for a whole new year of luck!'}, ()=>{
+      say([
+        {who:'Auntie Hua', port:H, text:"Beautiful! Now remember the OTHER half of the rule: tomorrow, the broom RESTS."},
+        {who:'Auntie Hua', port:H, text:"Sweep on New Year's DAY and you sweep the brand-new good luck right out the door! Not in MY house."},
+      ], ()=>{ giveScroll('sweep'); setStep(3); });
+    })));
+    else say([{who:'Auntie Hua', port:H, text: G.ch===1 ? "A tidy house, a lucky year. That's the deal." : G.ch===2 ? "I hung mugwort over every door. Smell that? That's summer being told to BEHAVE." : "I brought orange cakes to the feast. Try one before Uncle Bo eats them all."}]);
+  },
+
+  bo(){
+    const B = port('bo');
+    if (G.ch===1 && G.step===3){
+      say([
+        {who:'Uncle Bo', port:B, text:"Perfect timing! Help me paste the chūnlián — spring couplets. Little poems of good wishes, one for each side of the door."},
+        {who:'Uncle Bo', port:B, text:"And now the important one. The square with 福 — fú, 'good fortune.' Tell me, which way does it go?"},
+        { choice:['Right side up, obviously','Upside down!'], q:'Which way should the fú go?', cb:(sel)=>{
+          const first = sel===0
+            ? {who:'Uncle Bo', port:B, text:"HA! That's what everyone says. Watch this—"}
+            : {who:'Uncle Bo', port:B, text:"Ohhh, someone knows the secret already!"};
+          say([ first,
+            {who:'Uncle Bo', port:B, text:"We paste it UPSIDE DOWN — on purpose! In Chinese, 'upside down' (dào) sounds exactly like 'to arrive' (dào)."},
+            {who:'Uncle Bo', port:B, text:"So an upside-down fú shouts to the whole street: GOOD FORTUNE HAS ARRIVED! Word-play, kid. Five thousand years of dad jokes."},
+          ], ()=>{ giveScroll('fu'); setStep(4); });
+        }},
+      ]);
+    }
+    else say([{who:'Uncle Bo', port:B, text: G.ch===1 ? "Look at that door. LOOK at it. Best couplets on the street." : G.ch===2 ? "My money's on Captain Yu's crew. Don't tell the other boat." : "The moon's coming back. I can feel it in my couplets."}]);
+  },
+
+  mei(){
+    const M = port('mei');
+    if (G.ch===1){
+      if (G.step===4) say([
+        {who:'Mei', port:M, text:G.name+"! You're just in time — tonight is the REUNION DINNER. The whole family cooks together. It's the best part of the whole year."},
+        {who:'Mei', port:M, text:"We're making jiǎozi — dumplings! I'll teach you my grandmother's fold. Ready?"},
+      ], ()=> pushScene(makeSequence(MG_DUMPLING, ()=>{
+        say([
+          {who:'Mei', port:M, text:"LOOK at them! Fat and golden — folded like the old gold ingots. That's the wish: a year of plenty."},
+          {who:'Mei', port:M, text:"And see the whole fish on the table? 'Nián nián yǒu yú' — 'fish' sounds like 'extra,' so it means may EVERY year have extra. Food that talks!"},
+        ], ()=>{ giveScroll('luckyfood'); setStep(5); });
+      })));
+      else say([{who:'Mei', port:M, text:"My little brother tried to eat a RAW dumpling once. Don't be my little brother."}]);
+    }
+    else if (G.ch===2) say([{who:'Mei', port:M, text:"I braided a five-color bracelet for the festival. Granny Zhu says the colors guard against the five poisons!"}]);
+    else { // ch3
+      if (G.step===0) say([
+        {who:'Mei', port:M, text:"Hi, "+G.name+". …She's supposed to be beautiful tonight. Round and gold, so bright you can read by her."},
+        {who:'Mei', port:M, text:"Every Mid-Autumn my whole family sits right here — mooncakes, lanterns, and the same story every year. Sit with me? I'll tell it to you."},
+      ], ()=>{ setStep(1); pushScene(makeStory(changePages, ()=>{
+        say([
+          {who:'Mei', port:M, text:"…so when a family shares mooncakes under the full moon, Chang'e isn't lonely anymore. She sees the lights and knows we remember."},
+          {who:'Mei', port:M, text:"Help me relight the night? Baker Fang first — there's no feast without mooncakes!"},
+        ], ()=>{ giveScroll('change'); setStep(2); });
+      })); });
+      else say([{who:'Mei', port:M, text: G.step<5 ? "Moon first. Feelings later. GO!" : "Best. Mid-Autumn. EVER."}]);
+    }
+  },
+
+  yu(){
+    const Y = port('yu');
+    if (G.ch===2){
+      if (G.step===0) say([
+        {who:'Captain Yu', port:Y, text:"Hmph. See my beautiful boats? Fast as dragons, carved by my own father. And today of ALL days… silent."},
+        {who:'Captain Yu', port:Y, text:"My crews forgot WHY we race, so their paddles have no heart, and the great drum won't sing for us."},
+        {who:'Captain Yu', port:Y, text:"Old Wen keeps the true story at the west shrine. Bring it back to me, traveler. A race without its story is just splashing."},
+      ], ()=> setStep(1));
+      else if (G.step===5) say([
+        {who:'Captain Yu', port:Y, text:"The story's back in their eyes. The zongzi are wrapped. The herbs are hung. CREW! TO THE BOATS!"},
+        {who:'Captain Yu', port:Y, text:"You — lead boat, drum position. Paddle with the beat and make it THUNDER, like the villagers did for Qu Yuan!"},
+      ], ()=> pushScene(makeRhythm(()=>{
+        say([
+          {who:'Captain Yu', port:Y, text:"HAAAA! THAT is how you honor a poet! Twenty-three hundred years and the river still remembers his name!"},
+        ], ()=> setStep(6));
+      })));
+      else say([{who:'Captain Yu', port:Y, text: G.step<5 ? "Story first. Race after. Captain's orders." : "Fastest crossing I've seen since my father's day."}]);
+    }
+    else say([{who:'Captain Yu', port:Y, text: G.ch===1 ? "Even the fish celebrate tonight. ESPECIALLY the fish — nobody's allowed to catch them on New Year's!" : "On a moonlit night you can see every ripple for a mile."}]);
+  },
+
+  wen(){
+    const Wn = port('wen');
+    if (G.ch===2 && G.step===1){
+      say([
+        {who:'Old Wen', port:Wn, text:"Sit, child. This shrine keeps the memory of a man who loved his country more than his own life."},
+      ], ()=> pushScene(makeStory(quYuanPages, ()=>{
+        say([
+          {who:'Old Wen', port:Wn, text:"His great poem 'Li Sao' is still recited, twenty-three centuries later. 'Long, long is the road,' he wrote, 'and I will search high and low.'"},
+          {who:'Old Wen', port:Wn, text:"Now the story is in YOU. Take it to the village: Granny Zhu wraps the rice, the captain races the boats. Go."},
+        ], ()=>{ giveScroll('quyuan'); giveScroll('race'); setStep(2); });
+      })));
+    }
+    else say([{who:'Old Wen', port:Wn, text: G.ch===2 ? "A poem outlives a palace. Remember that at school." : G.ch===1 ? "Even in winter I sweep this shrine. Respect keeps better than firewood." : "The moon has heard every poem ever written. Tonight she gets a new one."}]);
+  },
+
+  zhu(){
+    const Z = port('zhu');
+    if (G.ch===2){
+      if (G.step===2) say([
+        {who:'Granny Zhu', port:Z, text:"Racing is hungry work! Come, help me wrap zòngzi — sticky rice bundled in bamboo leaves. Rice armor!"},
+        {who:'Granny Zhu', port:Z, text:"Just like the rice the villagers threw to keep the fish away from Qu Yuan. Fold, pack, tie. Show me your hands. Hm. They'll do."},
+      ], ()=> pushScene(makeSequence(MG_ZONGZI, ()=>{
+        say([
+          {who:'Granny Zhu', port:Z, text:"Not bad, not bad! In the NORTH they fill them sweet, with dates. Here in the south? Pork and salted egg yolk."},
+          {who:'Granny Zhu', port:Z, text:"Every family swears theirs is the true zongzi. The arguing is HALF the tradition. Now — I need mugwort from the riverbank. Three good sprigs!"},
+        ], ()=>{ giveScroll('zongzi'); setStep(3); });
+      })));
+      else if (G.step===4) say([
+        {who:'Granny Zhu', port:Z, text:"Fresh and sharp — perfect. Mugwort and calamus go over every door today."},
+        {who:'Granny Zhu', port:Z, text:"The fifth month brings heat, bugs, and sickness — the 'five poisons.' These herbs stand guard, and this little sachet is for YOU. Sniff it when your homework smells worse."},
+      ], ()=>{ giveScroll('herbs'); setStep(5); });
+      else say([{who:'Granny Zhu', port:Z, text: G.step===3 ? "Three sprigs of mugwort, riverbank, feathery leaves. My knees don't do riverbanks anymore." : "Eat. You're too skinny to fight rivers."}]);
+    }
+    else say([{who:'Granny Zhu', port:Z, text: G.ch===1 ? "I hid a lucky coin in one dumpling. Whoever finds it gets the luckiest year — and maybe a chipped tooth." : "I taught Baker Fang everything. He adds too much sugar anyway."}]);
+  },
+
+  fang(){
+    const F = port('fang');
+    if (G.ch===3 && G.step===2){
+      say([
+        {who:'Baker Fang', port:F, text:"The moon may be shy tonight, but MY ovens are not! We bake mooncakes — golden, round, and packed with meaning."},
+        {who:'Baker Fang', port:F, text:"Lotus paste, a salted egg yolk hidden inside like a little full moon, and the mold pressed at JUST the right moment. Ready? The dough waits for no one!"},
+      ], ()=> pushScene(makeTiming({
+        title:'MOONCAKE BAKERY', flavor:'Press at the perfect moment!',
+        roundLabels:['Press the dough into the mold…','Tuck in the salted egg yolk…','STAMP the pattern — now!'],
+        speeds:[2.0,2.6,3.2], zones:[32,25,19],
+        doneTitle:'GOLDEN!', doneLine:'A tray of perfect mooncakes, stamped and shining!',
+        onHit(r){ SFX.sparkle(); },
+        drawScene(progress,t,done){
+          R(0,0,LW,LH,'#4a3424');
+          for(let i=0;i<LW;i+=24) R(i,0,1,LH,'rgba(0,0,0,0.12)');
+          R(0,104,LW,76,'#8a6844'); R(0,104,LW,4,'#a88054');
+          // oven
+          R(240,60,54,44,'#5a4438'); R(248,74,38,22,'#2a1a12');
+          glow(267,85,14,'#ff7030',0.4+Math.sin(t*6)*0.1);
+          R(250,76,34,4,'#ff9040');
+          // tray of mooncakes appears
+          R(60,96,80,6,'#6a4c30');
+          for(let i=0;i<progress;i++) drawMooncake(74+i*26, 92, 1.1);
+          if (done) for(let i=0;i<3;i++) glow(74+i*26, 92, 10, '#ffd964', 0.25);
+          drawPerson(180,140,{...port('fang'), dir:'left'},t);
+          drawPerson(140,146,{...PLAYER_LOOK, dir:'right'},t);
+        }
+      }, ()=>{
+        say([
+          {who:'Baker Fang', port:F, text:"BEAUTIFUL. Round cakes for a 'round' family — tuányuán, reunion. One cake, cut in slices, so every single person shares it."},
+          {who:'Baker Fang', port:F, text:"Now light the five lantern poles around the village! A feast needs light — and the moon could use the encouragement."},
+        ], ()=>{ giveScroll('mooncake'); setStep(3); });
+      })));
+    }
+    else say([{who:'Baker Fang', port:F, text: G.ch===3 ? (G.step<3?"Ovens preheating!":"Save room for seconds!") : G.ch===1 ? "New Year's means niángāo — sticky rice cake! 'Gāo' sounds like 'taller': a HIGHER year, every year." : "Zongzi are Granny Zhu's turf. I know better than to compete."}]);
+  },
+};
+
+/* is Lóng the current objective? then he waits at the pedestal */
+function longWaiting(){
+  return (G.ch===1&&G.step===7)||(G.ch===2&&G.step===6)||(G.ch===3&&(G.step===5||G.step===6));
+}
+
+/* ---------- interactables ---------- */
+function getInteractables(){
+  const list = [];
+  // Lóng (hovers near you; stand still to talk to him)
+  list.push({x:world.lx, y:world.ly+10, r:28, depri:14, label:'Lóng', talk:talks.long});
+  for (const id in NPCS){
+    const p = npcPos(id);
+    if (!p) continue;
+    list.push({x:p[0], y:p[1], r:24, label:NPCS[id].name, talk:talks[id]});
+  }
+  // pedestal
+  list.push({x:480, y:210, r:24, label:'Festival Treasure', talk(){
+    const which = G.ch===1?['Red Lantern','t1']:G.ch===2?['Dragon Drum','t2']:['Moon Mirror','t3'];
+    say([{who:'', text: G.flags[which[1]]
+      ? 'The '+which[0]+' blazes with light. The story is safe.'
+      : 'The '+which[0]+' sits dim and gray, waiting for its story to be remembered.'}]);
+  }});
+  // well & shrine & pavilion flavor
+  list.push({x:WELL.x, y:WELL.y+6, r:22, label:'Make a wish', talk(){
+    say([{who:'', text:pick([
+      'You toss a wish into the well. Somewhere below: plip.',
+      'The well water is very cold and very honest. Your wish stands a fair chance.',
+      'You wish for '+(G.ch===3?'mooncakes':'dumplings')+'. Statistically, this one always comes true.'])}]);
+  }});
+  list.push({x:SHRINE.x, y:SHRINE.y+6, r:26, label:'Read the shrine', talk(){
+    say([{who:'', text:"Carved into the shrine: 'Long, long is the road, and I will search high and low.' — Qu Yuan, from the poem 'Li Sao.'"}]);
+  }});
+  list.push({x:PAVILION.x, y:PAVILION.y+8, r:28, label:'Moon pavilion', talk(){
+    say([{who:'', text: G.ch===3 ? 'The whole village comes here to watch the moon rise. Best seat in the house.' : 'A quiet pavilion on the hill, built for watching the moon. It waits patiently for autumn.'}]);
+  }});
+  // chapter items
+  if (G.ch===2 && G.step===3){
+    MUGWORT.forEach((m,i)=>{
+      if (!G.flags['mug'+i]) list.push({x:m[0], y:m[1], r:18, label:'Pick mugwort', talk(){
+        G.flags['mug'+i]=true; SFX.sparkle();
+        burst(m[0], m[1]-6, ['#78d878','#57a862'], 12, 30);
+        const got = MUGWORT.filter((_,j)=>G.flags['mug'+j]).length;
+        if (got>=3) say([{who:'', text:'(Three fresh sprigs! Their sharp green smell clears your head. Back to Granny Zhu.)'}], ()=> setStep(4));
+        else say([{who:'', text:'(You pick a sprig of mugwort. '+got+' of 3.)'}]);
+      }});
+    });
+  }
+  if (G.ch===3 && G.step===3){
+    POLES.forEach((p,i)=>{
+      if (!G.flags['pole'+i]) list.push({x:p[0], y:p[1], r:20, label:'Light lantern', talk(){
+        G.flags['pole'+i]=true; SFX.sparkle();
+        burst(p[0]+7, p[1]-20, ['#ffb050','#ffe98a'], 14, 30);
+      }});
+    });
+  }
+  return list;
+}
+/* ============================================================
+   BOOT
+   ============================================================ */
+window.addEventListener('contextmenu', e=> e.preventDefault());
+pushScene(titleScene);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
