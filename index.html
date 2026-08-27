@@ -1530,7 +1530,7 @@ const portCache = {};
 function portraitSprite(look){
   const key = JSON.stringify([look.skin,look.hair,look.top,look.pstyle,look.hairstyle,look.collar,
     look.elder?1:0,look.beard?1:0,look.goatee?1:0,look.bun?1:0,look.buns?1:0,look.hat?1:0,
-    look.glasses?1:0,look.blush?1:0,look.band?1:0,look.jewel?1:0,look.mouth,look.dragon?1:0,look.nian?1:0]);
+    look.glasses?1:0,look.blush?1:0,look.band?1:0,look.jewel?1:0,look.mouth,look.face,look.eyes,look.dragon?1:0,look.nian?1:0]);
   if (portCache[key]) return portCache[key];
   const cnv = document.createElement('canvas');
   cnv.width = PORT_W*P; cnv.height = PORT_H*P;
@@ -1566,6 +1566,16 @@ function paintPortrait(lk){
   const collar = lk.collar || (lk.elder?'hanfu':'jacket');
   const mouth = lk.mouth || 'smile';
   const C0 = 23;                 // face center x
+  const FACES = {
+    round:{rx:10.2, ry:11.4, chin:6.8, cheek:1,   jaw:false},
+    oval:{rx:9.2,  ry:11.8, chin:5.8, cheek:0.85, jaw:false},
+    square:{rx:10.4, ry:11,  chin:8.2, cheek:1,   jaw:true},
+    thin:{rx:8.6,  ry:12,   chin:5.2, cheek:0.75, jaw:false},
+    chubby:{rx:11, ry:11,   chin:7.6, cheek:1.3,  jaw:false},
+  };
+  const F = FACES[lk.face] || FACES.round;
+  const eyeKind = lk.eyes || 'round';
+  const irisC = lk.iris || '#54341e';
 
   /* hair behind the head */
   if (style==='long'){
@@ -1612,29 +1622,48 @@ function paintPortrait(lk){
   }
   R(19,37.6,8,2,s);              // jaw shadow on the neck
 
-  /* head */
-  ell(C0+0.4, 24.4, 10.6, 11.8, s);
-  ell(C0, 24, 10.2, 11.4, S);
-  dome(C0, 33.6, 6.8, 4, S);      // chin
-  dome(C0-2, 17, 6.4, 3.6, w2);   // forehead light
-  ell(12.4, 25, 1.8, 2.8, s); ell(12.6, 24.8, 1.4, 2.2, S);   // ears
-  ell(33.6, 25, 1.8, 2.8, s); ell(33.4, 24.8, 1.4, 2.2, S);
-  if (lk.jewel){ R(12, 28.4, 1.6, 1.6, '#e8b028'); R(33.4, 28.4, 1.6, 1.6, '#e8b028'); }
+  /* head (shape from F) */
+  ell(C0+0.4, 24.4, F.rx+0.4, F.ry+0.4, s);
+  ell(C0, 24, F.rx, F.ry, S);
+  if (F.jaw){ R(C0-F.rx+0.4, 28.6, 2.6, 4.6, S); R(C0+F.rx-3, 28.6, 2.6, 4.6, S); }
+  dome(C0, 33.2+(F.ry-11)*0.6, F.chin, 4, S);   // chin
+  dome(C0-2, 17, 6.4, 3.6, w2);                  // forehead light
+  const earX = F.rx + 1.2;
+  ell(C0-earX+0.2, 25, 1.8, 2.8, s); ell(C0-earX+0.4, 24.8, 1.4, 2.2, S);
+  ell(C0+earX-0.2, 25, 1.8, 2.8, s); ell(C0+earX-0.4, 24.8, 1.4, 2.2, S);
+  if (lk.jewel){ R(C0-earX-0.4, 28.4, 1.6, 1.6, '#e8b028'); R(C0+earX-1.2, 28.4, 1.6, 1.6, '#e8b028'); }
 
-  /* eyes */
-  for (const ex of [18, 28]){
-    ell(ex, 24.2, 3.2, 2.5, '#ffffff');
-    R(ex-3, 21.4, 6.4, 1.2, '#3a2318');                    // lash line
-    circle(ex+0.4, 24.4, 1.8, '#54341e');                  // iris
-    circle(ex+0.4, 24.6, 1, '#241410');
-    R(ex-0.6, 23.2, 1.2, 1.2, '#ffffff');                  // shine
-    R(ex-3, 26.8, 6, 0.9, s);                              // lower lid
-  }
-  /* brows */
+  /* eyes — per-character shape */
   const browC = lk.elder ? '#d8d4cc' : H0;
-  R(14.8, 18.4, 6.4, lk.elder?2:1.2, browC);
-  R(25, 18.4, 6.4, lk.elder?2:1.2, browC);
-  R(14.8, 19.2, 1.6, 1, browC); R(29.6, 19.2, 1.6, 1, browC);
+  for (const [ex, m] of [[18,-1],[28,1]]){
+    if (eyeKind==='smile'){
+      R(ex-3, 23.8, 6.4, 1.3, '#3a2318');
+      R(ex-3.8+((m<0)?0:0), 22.9, 1.2, 1.2, '#3a2318'); R(ex+2.6, 22.9, 1.2, 1.2, '#3a2318');
+      R(ex-2, 25.4, 4.4, 0.9, s);
+    } else {
+      const ry = eyeKind==='wide'?2.9 : eyeKind==='almond'?2 : eyeKind==='sharp'?1.8 : eyeKind==='gentle'?2.2 : 2.5;
+      ell(ex, 24.2, 3.2, ry, '#ffffff');
+      R(ex-3, 23.2-ry, 6.4, 1.2, '#3a2318');
+      if (eyeKind==='almond' || eyeKind==='sharp') R(ex+m*3.2-0.7, 23.6-ry, 1.6, 1.2, '#3a2318');
+      if (eyeKind==='gentle') R(ex+m*2.6-0.7, 24.4-ry, 1.6, 1, '#3a2318');
+      const ir = eyeKind==='wide'?2.1:1.8;
+      circle(ex+0.4, 24.4, ir, irisC);
+      circle(ex+0.4, 24.6, ir*0.55, '#241410');
+      R(ex-0.6, 23.4, 1.2, 1.2, '#ffffff');
+      R(ex-3, 24.4+ry, 6, 0.9, s);
+    }
+  }
+  /* brows — angle depends on eye kind */
+  if (eyeKind==='sharp'){
+    R(14.8, 18.2, 4.4, 1.4, browC); R(18.6, 19, 2.6, 1.4, browC);
+    R(26.8, 18.2, 4.4, 1.4, browC); R(24.8, 19, 2.6, 1.4, browC);
+  } else if (eyeKind==='gentle' || eyeKind==='smile'){
+    R(15, 18, 6, lk.elder?2:1.2, browC); R(25.2, 18, 6, lk.elder?2:1.2, browC);
+  } else {
+    R(14.8, 18.4, 6.4, lk.elder?2:1.2, browC);
+    R(25, 18.4, 6.4, lk.elder?2:1.2, browC);
+    R(14.8, 19.2, 1.6, 1, browC); R(29.6, 19.2, 1.6, 1, browC);
+  }
   /* nose */
   R(C0-0.6, 26.6, 1.4, 3.2, s);
   R(C0-1.6, 29.2, 3.4, 1, s);
@@ -1652,8 +1681,8 @@ function paintPortrait(lk){
     R(C0-2, 33, 4.4, 0.9, w2);
   }
   /* cheeks */
-  ell(15.6, 28.6, 2.2, 1.3, lk.blush ? '#f2a08c' : shade(skin,0.93));
-  ell(30.4, 28.6, 2.2, 1.3, lk.blush ? '#f2a08c' : shade(skin,0.93));
+  ell(C0-7.4*F.cheek+0.2, 28.6, 2.2*F.cheek, 1.3*F.cheek, lk.blush ? '#f2a08c' : shade(skin,0.93));
+  ell(C0+7.4*F.cheek-0.2, 28.6, 2.2*F.cheek, 1.3*F.cheek, lk.blush ? '#f2a08c' : shade(skin,0.93));
   /* elder wrinkles */
   if (lk.elder){
     R(15.4, 27, 4, 0.9, s); R(26.6, 27, 4, 0.9, s);
@@ -1729,51 +1758,81 @@ function paintPortrait(lk){
   }
 }
 
-/* Lóng's own portrait */
+/* Lóng's own portrait — fierce, flame-maned, reference style */
 function paintDragonPortrait(){
-  // mane
-  for (let k=0;k<6;k++){
-    const ang = -1.4 + k*0.56;
-    tri(16+Math.cos(ang+Math.PI)*4, 24+Math.sin(ang+Math.PI)*4,
-        16+Math.cos(ang+Math.PI)*15, 24+Math.sin(ang+Math.PI)*15,
-        16+Math.cos(ang+Math.PI+0.5)*5, 24+Math.sin(ang+Math.PI+0.5)*5,
-        k%2 ? '#d43424' : '#8a1c14');
+  // night backdrop instead of parchment: Lóng is magic
+  R(3,3,PORT_W-6,PORT_H-6,'#100c1e');
+  for(let i=0;i<12;i++){ const h=thash(i,31); R(4+(h*89)%38, 4+(h*53)%46, 1, 1, '#3a3456'); }
+  glow(24, 25, 20, '#f2b632', 0.15);
+  const CXH = 21, CYH = 24;               // skull center
+  // ---- flame mane: back arc only (behind the head) ----
+  const flame = (ang, len, wdt, c) => {
+    const bx1 = CXH + Math.cos(ang-wdt)*8.2, by1 = CYH + Math.sin(ang-wdt)*8.2;
+    const bx2 = CXH + Math.cos(ang+wdt)*8.2, by2 = CYH + Math.sin(ang+wdt)*8.2;
+    const tx3 = CXH + Math.cos(ang+0.18)*len, ty3 = CYH + Math.sin(ang+0.18)*len;
+    tri(bx1, by1, tx3, ty3, bx2, by2, c);
+  };
+  for (let k=0;k<7;k++) flame(1.9 + k*0.38, 17+((k%3)*3), 0.21, '#5a1010');   // deep layer
+  for (let k=0;k<6;k++) flame(2.02 + k*0.4, 13.5+((k%2)*3), 0.17, '#8a1c14');
+  for (let k=0;k<5;k++) flame(2.14 + k*0.42, 11+((k%2)*2), 0.14, '#d43424');
+  for (let k=0;k<3;k++) flame(2.5 + k*0.5, 9, 0.1, '#ff8656');
+  // ---- horns sweeping back over the mane ----
+  for (const [ox, oy, n] of [[19, 14, 4], [25, 13, 3]]){
+    for (let k=0;k<n;k++) R(ox-k*2.2-1.2, oy-k*2.4-1.4, 3.4, 3.6, '#2b1a26');
+    for (let k=0;k<n;k++) R(ox-k*2.2-0.8, oy-k*2.4-1, 2.2, 2.6, k<1?'#b08c5c':'#e8d8b8');
   }
-  // antlers
-  for (const ox of [16, 22]){
-    for (let k=0;k<3;k++) R(ox-k*2, 11-k*2.6, 3, 3.4, '#2b1a26');
-    for (let k=0;k<3;k++) R(ox-k*2+0.6, 11.4-k*2.6, 1.8, 2.4, '#e8d8b8');
+  // ---- skull ----
+  circle(CXH, CYH, 9, '#2b1a26');
+  circle(CXH, CYH, 8.2, '#c07c1c');
+  circle(CXH-1.4, CYH-1.8, 6.2, '#f2b632');
+  circle(CXH-2.8, CYH-3.4, 3.2, '#ffe27a');
+  // ---- snout: one long clean wedge ----
+  R(26, 18.4, 15.6, 8.4, '#2b1a26');
+  R(26, 19.2, 14.4, 6.8, '#f2b632');
+  R(26, 19.2, 13.6, 2, '#ffe27a');
+  dome(31, 19, 2.6, 1.8, '#ffe27a'); dome(37, 18.6, 2.4, 1.8, '#ffe27a');
+  R(39.4, 21, 1.8, 1.8, '#2b1a26');                        // flared nostril
+  R(40.6, 22.4, 1.4, 3, '#f2b632');                        // snout tip
+  // ---- heavy brow + deep-set fierce eye ----
+  R(22, 15, 12.6, 3.4, '#2b1a26');
+  R(22.8, 15.6, 11, 2, '#c07c1c');
+  R(22.8, 15.6, 11, 0.9, '#ffe27a');
+  R(25, 18.2, 8.8, 5.2, '#2b1a26');                        // socket
+  R(25.8, 19, 7.2, 3.6, '#ff9a2c');                        // amber eye
+  R(28.8, 19, 1.8, 3.6, '#180c06');                        // slit pupil
+  R(26.4, 19.6, 1.2, 1, '#fff3d0');                        // glint
+  // ---- open jaws ----
+  R(25, 26.8, 16.6, 4.4, '#5a0e0c');                        // mouth interior
+  R(25, 26, 16.6, 1.2, '#2b1a26');                          // upper lip
+  for (const [fx, fl] of [[28.4, 3.8], [33, 2.8], [37.6, 4.2]]){
+    tri(fx-1.6, 27, fx, 27+fl, fx+1.6, 27, '#2b1a26');
+    tri(fx-1.1, 27, fx, 26.8+fl, fx+1.1, 27, '#fff3d0');
   }
-  // skull
-  circle(21, 24, 9.4, '#2b1a26'); circle(21, 24, 8.6, '#c07c1c');
-  circle(19.6, 22.4, 6.8, '#f2b632');
-  circle(18, 20.6, 3.2, '#ffe27a');
-  // snout
-  R(24, 22, 17, 9, '#2b1a26');
-  R(24, 22.8, 15.6, 7.4, '#f2b632');
-  R(24, 22.8, 14.6, 2, '#ffe27a');
-  circle(39.4, 26.6, 3.4, '#2b1a26'); circle(38.8, 26.4, 2.8, '#f2b632');
-  R(37, 23.4, 2.2, 1.6, '#2b1a26');
-  // brow + eye
-  R(22.6, 18.4, 8.4, 2.6, '#2b1a26'); R(23.4, 19, 6.8, 1.4, '#c07c1c');
-  R(23.4, 21, 5.4, 4.6, '#2b1a26');
-  R(24, 21.6, 4.2, 3.6, '#ffffff');
-  R(26, 22, 2, 3, '#18100e');
-  R(24.6, 22, 1, 1, '#ffffff');
-  // grin + teeth
-  R(25, 29.2, 14, 2, '#8a1c14');
-  for (const fx of [26.6, 30.6, 34.6]) tri(fx, 29.2, fx+1, 31.4, fx+2, 29.2, '#fff3d0');
-  R(24.4, 31, 14.4, 2.6, '#2b1a26'); R(25, 31.4, 13, 1.6, '#c07c1c');
-  // whisker dots
-  for (let k=0;k<7;k++){
-    R(38-k*3, 34+Math.sin(k*0.8)*2+k*0.8, 1.2, 1.2, '#e8b028');
-    R(36-k*3, 38+Math.cos(k*0.7)*2+k*0.9, 1.2, 1.2, '#d43424');
+  R(27, 29.4, 8.6, 1.8, '#e0483a');                         // tongue
+  tri(35.6, 29.4, 38.4, 30.2, 35.6, 31.2, '#e0483a');
+  R(24.4, 31.2, 17.2, 3.6, '#2b1a26');                      // lower jaw
+  R(25, 31.8, 16, 2.4, '#c07c1c');
+  R(25, 31.8, 16, 1, '#f2b632');
+  for (const fx of [30.4, 36.2]){
+    tri(fx-1.5, 31.8, fx, 28.6, fx+1.5, 31.8, '#2b1a26');
+    tri(fx-1, 31.8, fx, 29.2, fx+1, 31.8, '#fff3d0');
   }
-  // chest coils
-  circle(14, 47, 6.4, '#2b1a26'); circle(14, 47, 5.6, '#c07c1c');
-  circle(13, 45.6, 3.6, '#f2b632');
-  circle(30, 49, 6, '#2b1a26'); circle(30, 49, 5.2, '#c07c1c'); circle(29, 47.8, 3.2, '#f2b632');
-  glow(21, 24, 15, '#f2b632', 0.14);
+  // chin fin
+  tri(24.6, 34.2, 19.6, 39.6, 27, 35.6, '#2b1a26');
+  tri(24.6, 34.2, 21.4, 38.4, 26.4, 35.2, '#d43424');
+  // ---- whisker tendrils flowing back-down ----
+  for (const [y0, ph] of [[33, 0], [35.6, 1.4]]){
+    for (let k=0;k<10;k++){
+      const wx = 39 - k*2.8;
+      const wy = y0 + k*1.05 + Math.sin(ph + k*0.55)*2.2;
+      R(wx, wy, 1.4, 1.4, k<3 ? '#ffe27a' : '#e8b028');
+    }
+  }
+  // ---- chest coil in the corner ----
+  circle(10, 47, 8, '#2b1a26'); circle(10, 47, 7.2, '#c07c1c');
+  circle(8.6, 45.4, 4.4, '#f2b632');
+  R(5, 48.6, 10, 1.6, '#f0d898'); R(6, 50.8, 8, 1.2, '#f0d898');
+  R(13.6, 42.6, 1, 2.4, '#9c6114'); R(16, 45, 1, 2.4, '#9c6114');
 }
 function paintNianPortrait(){
   circle(23, 26, 12, '#2b1a26'); circle(23, 26, 11, '#48962c');
@@ -1909,27 +1968,27 @@ const SOLIDS = solidRects();
 /* ---------- NPCs ---------- */
 /* look: options for drawPerson / drawPortrait */
 const NPCS = {
-  mei:  { name:'Mei',        look:{skin:'#eac086', hair:'#181418', top:'#e03c28', pants:'#3a3a55', child:true, buns:true, blush:true, collar:'hanfu', jewel:true, mouth:'open'},
+  mei:  { name:'Mei',        look:{skin:'#eac086', hair:'#181418', top:'#e03c28', pants:'#3a3a55', child:true, buns:true, blush:true, collar:'hanfu', jewel:true, mouth:'open', face:'round', eyes:'wide'},
           pos:{1:[150,120,'down'], 2:[300,150,'down'], 3:[700,262,'up']} },
-  elder:{ name:'Elder Shan', look:{skin:'#dcb27c', hair:'#e8e4dc', top:'#8a6a3a', pants:'#4a3a2a', elder:true, beard:true},
+  elder:{ name:'Elder Shan', look:{skin:'#dcb27c', hair:'#e8e4dc', top:'#8a6a3a', pants:'#4a3a2a', elder:true, beard:true, face:'square', eyes:'gentle'},
           pos:{1:[445,110,'down'], 2:[445,110,'down'], 3:[445,110,'down']} },
-  hua:  { name:'Auntie Hua', look:{skin:'#eac086', hair:'#2a2024', top:'#8a4a9a', pants:'#5a3a55', bun:true, collar:'hanfu', jewel:true, mouth:'open'},
+  hua:  { name:'Auntie Hua', look:{skin:'#eac086', hair:'#2a2024', top:'#8a4a9a', pants:'#5a3a55', bun:true, collar:'hanfu', jewel:true, mouth:'open', face:'oval', eyes:'almond'},
           pos:{1:[240,108,'down'], 2:[240,108,'down'], 3:[240,108,'down']} },
-  bo:   { name:'Uncle Bo',   look:{skin:'#d8a878', hair:'#2a2024', top:'#3a5ab0', pants:'#2a2a3a', pstyle:'side', goatee:true},
+  bo:   { name:'Uncle Bo',   look:{skin:'#d8a878', hair:'#2a2024', top:'#3a5ab0', pants:'#2a2a3a', pstyle:'side', goatee:true, face:'oval', eyes:'almond', iris:'#241410'},
           pos:{1:[596,108,'down'], 2:[596,108,'down'], 3:[596,108,'down']} },
-  yu:   { name:'Captain Yu', look:{skin:'#d09868', hair:'#181418', top:'#207878', pants:'#3a3a2a', hat:true, goatee:true, mouth:'calm'},
+  yu:   { name:'Captain Yu', look:{skin:'#d09868', hair:'#181418', top:'#207878', pants:'#3a3a2a', hat:true, goatee:true, mouth:'calm', face:'square', eyes:'sharp'},
           pos:{1:[672,242,'down'], 2:[672,242,'down'], 3:[672,242,'down']} },
-  wen:  { name:'Old Wen',    look:{skin:'#dcb27c', hair:'#d8d4cc', top:'#3e7b4e', pants:'#3a3a2a', elder:true, beard:true, mouth:'calm'},
+  wen:  { name:'Old Wen',    look:{skin:'#dcb27c', hair:'#d8d4cc', top:'#3e7b4e', pants:'#3a3a2a', elder:true, beard:true, mouth:'calm', face:'thin', eyes:'gentle'},
           pos:{1:[140,200,'down'], 2:[140,200,'down'], 3:[140,200,'down']} },
-  zhu:  { name:'Granny Zhu', look:{skin:'#e0b284', hair:'#e8e4dc', top:'#5a7a3a', pants:'#4a4a3a', elder:true, bun:true, mouth:'open'},
+  zhu:  { name:'Granny Zhu', look:{skin:'#e0b284', hair:'#e8e4dc', top:'#5a7a3a', pants:'#4a4a3a', elder:true, bun:true, mouth:'open', face:'chubby', eyes:'smile'},
           pos:{1:[340,190,'down'], 2:[340,190,'down'], 3:[340,190,'down']} },
-  fang: { name:'Baker Fang', look:{skin:'#e8bc90', hair:'#3a2c24', top:'#e8e0d0', pants:'#5a4a3a', pstyle:'side', collar:'apron', mouth:'open'},
+  fang: { name:'Baker Fang', look:{skin:'#e8bc90', hair:'#3a2c24', top:'#e8e0d0', pants:'#5a4a3a', pstyle:'side', collar:'apron', mouth:'open', face:'chubby', eyes:'round', iris:'#6a4426'},
           pos:{1:[700,108,'down'], 2:[700,108,'down'], 3:[700,108,'down']} },
 };
 const PLAYER_LOOK = { skin:'#eac086', hair:'#181418', top:'#e8b028', pants:'#3a4a8a' };
-const NAINAI_LOOK = { skin:'#e8c092', hair:'#e8e4dc', top:'#7a3a8a', pants:'#4a3a45', elder:true, bun:true, glasses:true };
-const MA_LOOK     = { skin:'#eac086', hair:'#2a2024', top:'#c05878', pants:'#3a3a55', bun:true, pstyle:'long', jewel:true };
-const BA_LOOK     = { skin:'#d8a878', hair:'#181418', top:'#3a6a5a', pants:'#2a2a3a', goatee:true };
+const NAINAI_LOOK = { skin:'#e8c092', hair:'#e8e4dc', top:'#7a3a8a', pants:'#4a3a45', elder:true, bun:true, glasses:true, face:'chubby', eyes:'gentle' };
+const MA_LOOK     = { skin:'#eac086', hair:'#2a2024', top:'#c05878', pants:'#3a3a55', bun:true, pstyle:'long', jewel:true, face:'oval', eyes:'round' };
+const BA_LOOK     = { skin:'#d8a878', hair:'#181418', top:'#3a6a5a', pants:'#2a2a3a', goatee:true, face:'square', eyes:'almond' };
 const LONG_PORTRAIT = { dragon:true };
 
 /* ---------- objectives per chapter/step ---------- */
@@ -3172,22 +3231,24 @@ const CC_OPTS = {
   hairstyle: { label:'HAIRSTYLE', names:['Short','Long','Twin buns','Ponytail'], vals:['short','long','buns','pony'] },
   hair: { label:'HAIR', swatch:true, names:['Black','Brown','Auburn','Midnight'], vals:['#241a1e','#4a2c1a','#8a4a2c','#1a2438'] },
   skin: { label:'SKIN', swatch:true, names:['Light','Tan','Brown','Deep'], vals:['#f2c896','#e8b078','#c68a58','#8a5a38'] },
+  eyes: { label:'EYES', names:['Round','Wide','Almond','Sharp','Happy'], vals:['round','wide','almond','sharp','smile'] },
+  face: { label:'FACE', names:['Round','Oval','Square','Chubby'], vals:['round','oval','square','chubby'] },
   top:  { label:'OUTFIT', swatch:true, names:['Festival Red','River Blue','Lantern Gold','Bamboo Green','Plum Purple'],
           vals:['#e03c28','#3a5ab0','#e8b028','#3e8b4e','#8a4a9a'] },
   extra:{ label:'EXTRA', names:['None','Headband','Blush','Glasses'], vals:['none','band','blush','glasses'] },
 };
 const CC_PANTS = { '#e03c28':'#3a4a8a', '#3a5ab0':'#2a2a3a', '#e8b028':'#3a4a8a', '#3e8b4e':'#3a3a2a', '#8a4a9a':'#3a2a45' };
-const CC_ROWS = ['hairstyle','hair','skin','top','extra','start'];
+const CC_ROWS = ['hairstyle','hair','skin','eyes','face','top','extra','start'];
 
 const creatorScene = {
-  sel:0, idx:{hairstyle:0, hair:0, skin:0, top:0, extra:0}, t:0,
+  sel:0, idx:{hairstyle:0, hair:0, skin:0, eyes:0, face:0, top:0, extra:0}, t:0,
   enter(){ this.t=0; },
   look(){
     const v = k => CC_OPTS[k].vals[this.idx[k]];
     const extra = v('extra');
     return {
       skin:v('skin'), hair:v('hair'), top:v('top'), pants:CC_PANTS[v('top')],
-      hairstyle:v('hairstyle'),
+      hairstyle:v('hairstyle'), eyes:v('eyes'), face:v('face'),
       band: extra==='band', blush: extra==='blush', glasses: extra==='glasses',
     };
   },
@@ -3215,7 +3276,7 @@ const creatorScene = {
     // touch: tap a row to cycle it, tap START to go
     if (tapPos){
       for (let i=0;i<CC_ROWS.length;i++){
-        const y = 34+i*22;
+        const y = 30+i*17;
         if (tapPos.y>y-4 && tapPos.y<y+16 && tapPos.x>100){
           this.sel = i;
           if (CC_ROWS[i]==='start') this.finish();
@@ -3241,7 +3302,7 @@ const creatorScene = {
     drawParts(0,0);
     // option rows
     for (let i=0;i<CC_ROWS.length;i++){
-      const key = CC_ROWS[i], y = 34+i*22, on = i===this.sel;
+      const key = CC_ROWS[i], y = 30+i*17, on = i===this.sel;
       if (key==='start'){
         const w = 96;
         box(180-w/2+26, y-2, w, 15, {border: on?'#f2b632':'#6a5a48', bg: on?'rgba(90,40,20,0.9)':'rgba(20,12,16,0.85)'});
