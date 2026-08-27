@@ -25,7 +25,8 @@ appear automatically).
 | Z / Space / Enter | Talk · Confirm (✓) |
 | X / Esc | Back (✕) |
 | J | Open the Wisdom Scroll Journal |
-| M | Mute / unmute music |
+| M | Mute / unmute all sound |
+| V | Toggle character read-aloud voices |
 
 The game **saves automatically** — you can close it and press CONTINUE later.
 
@@ -42,9 +43,22 @@ paraphrased fact. The in-game **Journal** collects them, and the Journal's
 **Research Sources** page lists where the facts came from
 (full citations in [`SOURCES.md`](SOURCES.md)).
 
+## Music & voices
+
+All audio is synthesized live in the browser — no recordings. The plucked
+string is a real Karplus-Strong string simulation standing in for the
+**guzheng** (Chinese zither), joined by a bamboo-flute (**dizi**) voice,
+woodblock, drum, and gong. The title and Mid-Autumn themes are arrangements
+of **"Mo Li Hua" (茉莉花, Jasmine Flower)** — one of the oldest and most
+famous traditional Chinese folk songs. Every character also has their own
+voice: pitched speech-babble while text types out, plus an optional
+read-aloud narrator (press **V**) where Lóng speaks deep and slow and
+Nǎi Nai sounds like a grandma.
+
 ## Credits
 
 - Family traditions, heritage & creative direction: the student & their family
 - Programming help: Claude (AI assistant) — used as the "game engine," the way
   Scratch would be
 - All festival facts were checked against the research sources in `SOURCES.md`
+- Title & Mid-Autumn music based on the traditional folk song "Mo Li Hua"
