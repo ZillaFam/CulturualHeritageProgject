@@ -1080,6 +1080,390 @@ function drawPortrait(x, y, o){
 /* the player's chosen look (from the character creator) */
 function playerLook(){ return G.look || PLAYER_LOOK; }
 /* ============================================================
+   CREATURES — Lóng & Nian, hero-sprite quality
+   deep outlines, 3-4 tone ramps, top-left light
+   ============================================================ */
+
+function tri(x1,y1,x2,y2,x3,y3,c){
+  cx.fillStyle=c; cx.beginPath();
+  cx.moveTo(x1*P,y1*P); cx.lineTo(x2*P,y2*P); cx.lineTo(x3*P,y3*P);
+  cx.closePath(); cx.fill();
+}
+const INK = '#1a1016';
+
+/* gold-shaded blob (dragon) */
+function gblob(x, y, r){
+  circle(x, y, r+0.9, INK);
+  circle(x, y, r, '#c07c1c');
+  circle(x-r*0.12, y-r*0.22, r*0.82, '#f2b632');
+  circle(x-r*0.32, y-r*0.42, r*0.42, '#ffe27a');
+}
+/* green-shaded blob (nian) */
+function nblob(x, y, r, hi){
+  circle(x, y, r+0.9, INK);
+  circle(x, y, r, '#2a6620');
+  circle(x-r*0.12, y-r*0.22, r*0.82, '#48962c');
+  if (hi!==false) circle(x-r*0.32, y-r*0.42, r*0.42, '#7cc93e');
+}
+
+/* ---------- LÓNG the dragon ---------- */
+function drawLong(hx, hy, t, flip=false, sc=1){
+  cx.save();
+  cx.imageSmoothingEnabled = false;
+  cx.translate(hx*P, hy*P); cx.scale(sc, sc); cx.translate(-hx*P, -hy*P);
+  const D = flip ? -1 : 1;
+  const N = 11, SP = 5.2, RR = 5;
+  const bx = i => hx - D*(8 + i*SP);
+  const by = i => hy + 5.5 + Math.sin(t*2.6 + i*0.55)*3.4;
+  // tail fan (behind everything)
+  const tx2 = bx(N+0.6), ty2 = by(N+0.6);
+  tri(tx2+D*3, ty2, tx2-D*7, ty2-7, tx2-D*9, ty2, INK);
+  tri(tx2+D*3, ty2, tx2-D*9, ty2, tx2-D*7, ty2+7, INK);
+  tri(tx2+D*2, ty2-0.4, tx2-D*6, ty2-5.6, tx2-D*7.6, ty2-0.4, '#d43424');
+  tri(tx2+D*2, ty2+0.4, tx2-D*7.6, ty2+0.4, tx2-D*6, ty2+5.6, '#8a1c14');
+  tri(tx2+D*1.4, ty2-0.6, tx2-D*4, ty2-3.4, tx2-D*5, ty2-0.6, '#ff8656');
+  // dorsal fins (every other segment, drawn before the tube so they poke out the top)
+  for (let i=N;i>=0;i-=2){
+    const sx = bx(i), sy = by(i);
+    tri(sx-3.6, sy-2.6, sx-D*1, sy-9.8, sx+3.6, sy-2.6, INK);
+    tri(sx-2.6, sy-3, sx-D*1, sy-8.6, sx+2.6, sy-3, '#d43424');
+    tri(sx-1.8, sy-3.2, sx-D*1.2, sy-7.6, sx+0.2, sy-3.2, '#ff8656');
+  }
+  // continuous tube body: outline pass, base pass, light pass
+  for (let i=N;i>=0;i--) circle(bx(i), by(i), RR+0.9, INK);
+  for (let i=N;i>=0;i--) circle(bx(i), by(i), RR, '#c07c1c');
+  for (let i=N;i>=0;i--) circle(bx(i)-0.6, by(i)-1.2, RR*0.78, '#f2b632');
+  for (let i=N;i>=0;i--) circle(bx(i)-1.4, by(i)-2, RR*0.4, '#ffe27a');
+  // belly plates
+  for (let i=N;i>=0;i--){
+    const sx = bx(i), sy = by(i);
+    cx.fillStyle = '#f0d898';
+    cx.beginPath(); cx.arc(sx*P, (sy+RR*0.28)*P, RR*0.56*P, 0.15*Math.PI, 0.85*Math.PI); cx.fill();
+    R(sx-1.8, sy+RR*0.62, 3.6, 0.8, '#c8a05c');
+  }
+  // scale ticks
+  for (let i=N-1;i>=1;i-=2){
+    cx.strokeStyle = '#9c6114'; cx.lineWidth = P*0.8;
+    cx.beginPath(); cx.arc(bx(i)*P, by(i)*P, RR*0.7*P, -0.35*Math.PI, 0.35*Math.PI); cx.stroke();
+  }
+  // little clawed legs
+  for (const i of [3, 8]){
+    const sx = bx(i), sy = by(i);
+    R(sx-1.4, sy+3.8, 3, 4.8, INK); R(sx-0.8, sy+4.2, 1.8, 3.8, '#c07c1c'); R(sx-0.8, sy+4.2, 1, 2, '#f2b632');
+    R(sx-3, sy+8, 6, 2.2, INK);
+    R(sx-2.5, sy+8.3, 1.5, 1.5, '#e8d8b8'); R(sx-0.3, sy+8.3, 1.5, 1.5, '#e8d8b8'); R(sx+1.6, sy+8.3, 1.2, 1.5, '#e8d8b8');
+  }
+  /* ----- head (chunky, facing D) ----- */
+  // mane: layered spikes anchored to the back of the skull
+  const MSP = [[-2,-6,-11,-10],[-3,-3,-13,-4],[-3,1,-13,3],[-2,4,-11,8]];
+  for (const [ax1, ay1, ax2, ay2] of MSP){
+    tri(hx+D*ax1, hy+ay1-2, hx+D*ax2, hy+ay2, hx+D*ax1, hy+ay1+2.6, INK);
+  }
+  MSP.forEach(([ax1, ay1, ax2, ay2], k)=>{
+    tri(hx+D*(ax1+0.6), hy+ay1-1.4, hx+D*(ax2+1.6), hy+ay2, hx+D*(ax1+0.6), hy+ay1+2, k%2 ? '#d43424' : '#8a1c14');
+    if (k%2===0) tri(hx+D*(ax1+0.6), hy+ay1-0.8, hx+D*((ax1+ax2)/2), hy+(ay1+ay2)/2, hx+D*(ax1+0.6), hy+ay1+1, '#ff8656');
+  });
+  // whiskers trailing back
+  cx.strokeStyle = '#e8b028'; cx.lineWidth = P*0.9;
+  cx.beginPath();
+  cx.moveTo((hx+D*8)*P, (hy+3)*P);
+  cx.quadraticCurveTo((hx-D*2)*P, (hy+8+Math.sin(t*3)*1.5)*P, (hx-D*12)*P, (hy+6+Math.sin(t*2.6)*2)*P);
+  cx.stroke();
+  cx.beginPath();
+  cx.moveTo((hx+D*8)*P, (hy+4.4)*P);
+  cx.quadraticCurveTo((hx-D*1)*P, (hy+11+Math.cos(t*2.8)*1.5)*P, (hx-D*10)*P, (hy+10+Math.cos(t*2.4)*2)*P);
+  cx.stroke();
+  // antlers: stepped beams sweeping up and BACK, deer-style, with a fork
+  for (const ox of [1, 4.6]){
+    const ax = hx + D*ox;
+    for (let k=0;k<4;k++) R(ax - D*(k*1.5+1.3), hy-6.6-k*2, D*3, 3, INK);
+    R(ax - D*9.2, hy-14.6, D*3.2, 2.8, INK);
+    for (let k=0;k<4;k++) R(ax - D*(k*1.5+0.9), hy-6.2-k*2, D*2, 2.2, k<2 ? '#b08c5c' : '#e8d8b8');
+    R(ax - D*8.8, hy-14.2, D*2.4, 1.8, '#e8d8b8');
+  }
+  // ear fin
+  tri(hx-D*4, hy-4.5, hx-D*8.5, hy-7.5, hx-D*4, hy-1, INK);
+  tri(hx-D*4, hy-4, hx-D*7.4, hy-6.4, hx-D*4, hy-1.4, '#d43424');
+  // skull
+  gblob(hx, hy-1, 6.6);
+  // snout: broad, stepped
+  R(hx+D*3, hy-3.4, D*10.6, 7, INK);
+  R(hx+D*3, hy-2.6, D*9.8, 5.4, '#f2b632');
+  R(hx+D*3, hy-2.6, D*9, 1.6, '#ffe27a');
+  circle(hx+D*12.6, hy+0.2, 2.6, INK); circle(hx+D*12.2, hy, 2.1, '#f2b632');
+  // nostril + bump
+  R(hx+D*11.2, hy-2.2, D*1.6, 1.4, INK);
+  R(hx+D*9.6, hy-3.6, D*2.6, 1.2, '#ffe27a');
+  // brow ridge
+  R(hx+D*0.6, hy-5.6, D*7, 2.4, INK);
+  R(hx+D*1.2, hy-5, D*5.6, 1.4, '#c07c1c');
+  // eye: big, glinty
+  R(hx+D*1.6, hy-3.4, D*4, 3.6, INK);
+  R(hx+D*2, hy-3, D*3.2, 2.8, '#ffffff');
+  R(hx+D*3.6, hy-2.8, D*1.6, 2.4, '#18100e');
+  R(hx+D*3.8, hy-2.6, D*0.8, 0.8, '#ffffff');
+  // mouth: open with teeth + red inside
+  R(hx+D*4, hy+3.2, D*9, 1.6, '#8a1c14');
+  tri(hx+D*5, hy+3.2, hx+D*5.8, hy+4.6, hx+D*6.6, hy+3.2, '#fff3d0');
+  tri(hx+D*8, hy+3.2, hx+D*8.8, hy+4.6, hx+D*9.6, hy+3.2, '#fff3d0');
+  // lower jaw
+  R(hx+D*3.6, hy+4.6, D*8.6, 2.6, INK);
+  R(hx+D*4, hy+4.8, D*7.6, 1.8, '#c07c1c');
+  tri(hx+D*11, hy+4.8, hx+D*11.8, hy+3.4, hx+D*12.6, hy+4.8, '#fff3d0');
+  // chin barbel
+  circle(hx+D*4.6, hy+8, 1.4, INK); circle(hx+D*4.4, hy+7.8, 0.9, '#f2b632');
+  glow(hx, hy, 13, '#f2b632', 0.13);
+  cx.restore();
+}
+
+/* ---------- NIAN the beast ---------- */
+function drawNian(x, y, t){
+  const stomp = Math.abs(Math.sin(t*3.2))*1.6;
+  const by = y - stomp;
+  cx.fillStyle='rgba(0,0,0,0.32)';
+  cx.fillRect((x-28)*P, (y-2)*P, 60*P, 4*P);
+  // tail
+  nblob(x-25, by-14, 3.6);
+  nblob(x-28, by-19, 3, false);
+  tri(x-28, by-25, x-32, by-17, x-25, by-20, INK);
+  tri(x-28, by-24, x-31, by-18, x-26, by-20, '#d43424');
+  // back leg
+  nblob(x-15, by-8, 6);
+  R(x-18, by-5, 6, 5, INK); R(x-17, by-4.4, 4, 4, '#2a6620');
+  R(x-18.6, by-1.4, 7, 1.8, INK);
+  R(x-18, by-1.2, 1.6, 1.4, '#ede0bc'); R(x-15.6, by-1.2, 1.6, 1.4, '#ede0bc'); R(x-13.4, by-1.2, 1.4, 1.4, '#ede0bc');
+  // body: muscle cluster
+  nblob(x-16, by-17, 8.4);
+  nblob(x-6, by-20, 9.6);
+  nblob(x+3, by-18, 9);
+  nblob(x-6, by-12, 8, false);
+  nblob(x+4, by-10.5, 7.4, false);
+  // spiky ridge along the back
+  for (let i=0;i<6;i++){
+    const sx = x-22+i*5.2, sh = 6 + (i%3)*2;
+    tri(sx-2.6, by-24, sx, by-24-sh, sx+2.6, by-24, INK);
+    tri(sx-1.8, by-24.4, sx, by-24-sh+1, sx+1.8, by-24.4, i%2 ? '#2a6620' : '#48962c');
+    tri(sx-1.2, by-24.4, sx-0.4, by-24-sh+2.2, sx+0.2, by-24.4, '#7cc93e');
+  }
+  // belly shag
+  for (let i=0;i<6;i++){
+    const sx = x-18+i*5;
+    tri(sx-2.2, by-7, sx, by-2.6+(i%2)*1.4, sx+2.2, by-7, INK);
+    tri(sx-1.5, by-7, sx, by-3.6+(i%2)*1.4, sx+1.5, by-7, '#143c16');
+  }
+  // front legs
+  nblob(x+8, by-9, 5.6);
+  R(x+4.6, by-6, 6.4, 6, INK); R(x+5.4, by-5.4, 4.6, 5, '#2a6620'); R(x+5.8, by-5, 2, 3, '#48962c');
+  R(x+4, by-1.6, 8, 2, INK);
+  R(x+4.8, by-1.4, 1.8, 1.6, '#ede0bc'); R(x+7.2, by-1.4, 1.8, 1.6, '#ede0bc'); R(x+9.6, by-1.4, 1.6, 1.6, '#ede0bc');
+  nblob(x+16, by-10, 5.2);
+  R(x+13.6, by-6.6, 6, 6.4, INK); R(x+14.4, by-6, 4.2, 5.4, '#2a6620'); R(x+14.8, by-5.6, 1.8, 3, '#48962c');
+  R(x+13, by-1.6, 8, 2, INK);
+  R(x+13.8, by-1.4, 1.8, 1.6, '#ede0bc'); R(x+16.2, by-1.4, 1.8, 1.6, '#ede0bc'); R(x+18.6, by-1.4, 1.6, 1.6, '#ede0bc');
+
+  /* ----- BIG head, front-right ----- */
+  const cxx = x+14, cyy = by-31;
+  // horns: curved, gold, two-tone
+  for (const s of [-1, 1]){
+    const hxx = cxx + s*8;
+    R(hxx-2, cyy-9, 4, 4, INK); R(hxx-1.4, cyy-8.6, 2.8, 3, '#c07c1c');
+    R(hxx+s*1-2, cyy-12, 4, 4, INK); R(hxx+s*1-1.4, cyy-11.6, 2.8, 3, '#f2b632');
+    R(hxx+s*2.4-1.6, cyy-14.6, 3.2, 3.4, INK); R(hxx+s*2.4-1, cyy-14.2, 2, 2.6, '#ffe27a');
+  }
+  // mane crest between horns
+  for (let i=0;i<3;i++){
+    const mx = cxx-4+i*4;
+    tri(mx-2, cyy-8, mx, cyy-14-(i%2)*2, mx+2, cyy-8, INK);
+    tri(mx-1.3, cyy-8.4, mx, cyy-13-(i%2)*2, mx+1.3, cyy-8.4, i%2 ? '#d43424' : '#8a1c14');
+  }
+  // skull + cheeks
+  nblob(cxx, cyy, 10.4);
+  nblob(cxx-8.6, cyy+3.4, 4.6, false);
+  nblob(cxx+8.6, cyy+3.4, 4.6, false);
+  // ears
+  tri(cxx-12, cyy-6, cxx-15.5, cyy-9.5, cxx-9.5, cyy-8.5, INK);
+  tri(cxx-11.6, cyy-6.4, cxx-14.2, cyy-8.8, cxx-10, cyy-8, '#2a6620');
+  tri(cxx+12, cyy-6, cxx+15.5, cyy-9.5, cxx+9.5, cyy-8.5, INK);
+  tri(cxx+11.6, cyy-6.4, cxx+14.2, cyy-8.8, cxx+10, cyy-8, '#2a6620');
+  // heavy brow ledge
+  R(cxx-9.6, cyy-4.6, 19.2, 3.2, INK);
+  R(cxx-9, cyy-4.2, 18, 2, '#143c16');
+  R(cxx-9, cyy-4.2, 18, 0.8, '#48962c');
+  // furious glowing eyes under the brow
+  R(cxx-7.6, cyy-1.2, 5, 2.8, INK); R(cxx-7, cyy-0.8, 3.8, 2, '#ff3820'); R(cxx-6.6, cyy-0.6, 1.2, 0.8, '#ffd0c0');
+  R(cxx+2.6, cyy-1.2, 5, 2.8, INK); R(cxx+3.2, cyy-0.8, 3.8, 2, '#ff3820'); R(cxx+3.6, cyy-0.6, 1.2, 0.8, '#ffd0c0');
+  glow(cxx-5, cyy, 6, '#ff5030', 0.5); glow(cxx+5, cyy, 6, '#ff5030', 0.5);
+  // muzzle with wrinkles + nostrils
+  R(cxx-6.6, cyy+2, 13.2, 5.2, INK);
+  R(cxx-6, cyy+2.4, 12, 4.4, '#48962c');
+  R(cxx-6, cyy+2.4, 12, 1, '#7cc93e');
+  R(cxx-4.6, cyy+3.8, 3, 1, '#2a6620'); R(cxx+1.6, cyy+3.8, 3, 1, '#2a6620');
+  R(cxx-2.4, cyy+5.2, 1.6, 1.6, INK); R(cxx+0.8, cyy+5.2, 1.6, 1.6, INK);
+  // wide lower jaw with big up-fangs
+  R(cxx-9.4, cyy+7, 18.8, 4.6, INK);
+  R(cxx-8.8, cyy+7.6, 17.6, 3.4, '#2a6620');
+  R(cxx-8.8, cyy+7.6, 17.6, 1, '#48962c');
+  for (const [fx, fh] of [[cxx-8, 5.4], [cxx-3.4, 3.6], [cxx+2, 3.6], [cxx+6.4, 5.4]]){
+    tri(fx-1.6, cyy+7.8, fx, cyy+7.8-fh, fx+1.6, cyy+7.8, INK);
+    tri(fx-1, cyy+7.8, fx, cyy+7.8-fh+1, fx+1, cyy+7.8, '#ede0bc');
+  }
+  R(cxx-7, cyy+10.2, 14, 0.9, '#143c16');
+}
+/* ============================================================
+   VILLAGE — buildings & trees at hero-sprite quality
+   (overrides the simple versions in p3)
+   ============================================================ */
+
+function drawRoof(x, y, w){
+  // bottom layer (widest, upturned tips)
+  R(x-8, y-1, w+16, 6.6, INK);
+  R(x-7, y, w+14, 5, '#4a4658');
+  R(x-7, y, w+14, 1.2, '#6f6a8c');
+  for (let i=0;i<w+14;i+=3.4) R(x-7+i, y+1.6, 1, 3.4, '#3a3750');
+  R(x-9.5, y-3.4, 4, 5, INK); R(x-9, y-2.8, 3, 3.6, '#4a4658'); R(x-9, y-2.8, 3, 1, '#6f6a8c');
+  R(x+w+5.5, y-3.4, 4, 5, INK); R(x+w+6, y-2.8, 3, 3.6, '#4a4658'); R(x+w+6, y-2.8, 3, 1, '#6f6a8c');
+  circle(x-8, y-3.4, 1.3, '#c07c1c'); circle(x-8, y-3.6, 1, '#f2b632');
+  circle(x+w+8, y-3.4, 1.3, '#c07c1c'); circle(x+w+8, y-3.6, 1, '#f2b632');
+  // middle layer
+  R(x-4, y-5.6, w+8, 5.6, INK);
+  R(x-3, y-4.8, w+6, 4, '#413d56');
+  R(x-3, y-4.8, w+6, 1, '#655f80');
+  for (let i=0;i<w+6;i+=3.4) R(x-3+i, y-3.4, 1, 2.4, '#332f46');
+  // ridge
+  R(x-0.5, y-9, w+1, 4.4, INK);
+  R(x+0.5, y-8.2, w-1, 3, '#332f46');
+  R(x+0.5, y-8.2, w-1, 1, '#575170');
+  circle(x+w/2, y-8.6, 1.6, INK); circle(x+w/2, y-8.8, 1.2, '#f2b632');
+}
+function drawWindow(x, y, lit){
+  R(x-1.4, y-1.4, 11.8, 10.8, INK);
+  R(x-0.6, y-0.6, 10.2, 9.2, '#8a6a48');
+  R(x, y, 9, 8, lit ? '#ffca6a' : '#2c2018');
+  if (lit){ R(x+1, y+1, 3, 2.6, '#ffe9b0'); glow(x+4.5, y+4, 8, '#ffb050', 0.25); }
+  R(x+4, y, 1, 8, lit ? '#c07c1c' : '#f2b632');
+  R(x, y+3.6, 9, 1, lit ? '#c07c1c' : '#f2b632');
+}
+function drawHouse(h, decor){
+  const {x, y, w, ht} = h;
+  const lit = decor && decor.lit;
+  // wall
+  R(x-1.4, y-1, w+2.8, ht+2, INK);
+  R(x, y, w, ht, '#efe0c2');
+  R(x, y, w, 1.4, '#d8c8a4');
+  // stone base
+  R(x, y+ht-3.6, w, 3.6, '#b9ab90');
+  for (let i=4;i<w;i+=9) R(x+i, y+ht-3.6, 1, 3.6, '#a2947a');
+  // beam under the eaves
+  R(x, y+1.4, w, 2.2, '#7a5a40');
+  // wooden frame lines
+  for (let i=12;i<w-8;i+=15) R(x+i, y+3.6, 1.2, ht-7, '#cbb894');
+  // red corner columns
+  R(x-0.6, y, 3.2, ht, INK); R(x, y, 2.2, ht, '#a03428'); R(x+0.4, y, 0.8, ht, '#c85040');
+  R(x+w-2.6, y, 3.2, ht, INK); R(x+w-2.2, y, 2.2, ht, '#a03428'); R(x+w-1.8, y, 0.8, ht, '#c85040');
+  drawRoof(x, y-2, w);
+  // door
+  const dx = x + (h.door!==undefined ? h.door : Math.floor(w/2)-5);
+  R(dx-1.2, y+ht-14, 13.4, 14, INK);
+  R(dx, y+ht-13, 11, 13, '#4a2c1c');
+  R(dx, y+ht-13, 11, 1.2, '#2e1a10');
+  R(dx+3.5, y+ht-13, 1, 13, '#5a3828'); R(dx+7, y+ht-13, 1, 13, '#5a3828');
+  circle(dx+8.6, y+ht-7, 1, '#c07c1c'); circle(dx+8.6, y+ht-7.2, 0.7, '#f2b632');
+  // windows
+  if (w>30){ drawWindow(x+7, y+6, lit); drawWindow(x+w-16, y+6, lit); }
+  else drawWindow(x+w-16, y+6, lit);
+  // festival decor
+  if (decor && decor.couplets){
+    R(dx-4.6, y+ht-13.6, 3.8, 12.6, INK); R(dx-4, y+ht-13, 2.8, 11.6, '#d43424'); R(dx-3.6, y+ht-13, 0.8, 11.6, '#f06848');
+    R(dx+11, y+ht-13.6, 3.8, 12.6, INK); R(dx+11.6, y+ht-13, 2.8, 11.6, '#d43424'); R(dx+12, y+ht-13, 0.8, 11.6, '#f06848');
+    R(dx-1.4, y+ht-16.8, 13.8, 3.6, INK); R(dx-0.8, y+ht-16.2, 12.6, 2.6, '#d43424');
+  }
+  if (decor && decor.fu){
+    R(dx+2.4, y+ht-24.6, 8.2, 8.2, INK);
+    R(dx+3, y+ht-24, 7, 7, '#d43424');
+    R(dx+3.4, y+ht-23.6, 6.2, 1, '#f06848');
+    hanzi('福', dx+6.5, y+ht-20.2, 5, '#f2b632');
+  }
+  if (decor && decor.lanterns){
+    drawLantern(x+4, y+2, 0.8, lit, G.time);
+    drawLantern(x+w-4, y+2, 0.8, lit, G.time+1.3);
+  }
+  if (h.sign){
+    R(x+w/2-15.2, y+1.2, 30.4, 9.6, INK);
+    R(x+w/2-14, y+2, 28, 8, '#2e1a10');
+    R(x+w/2-14, y+2, 28, 1, '#5a3828');
+    T(h.sign, x+w/2, y+3.5, 4.4, '#f2b632', 'center');
+  }
+}
+function drawTree(x, y, kind, chp){
+  cx.fillStyle='rgba(0,0,0,0.22)';
+  cx.beginPath(); cx.ellipse(x*P, (y-1)*P, 7*P, 2.2*P, 0, 0, Math.PI*2); cx.fill();
+  // trunk
+  R(x-2.6, y-10, 5.2, 10, INK);
+  R(x-2, y-9.4, 4, 9.4, '#6a4a34');
+  R(x-2, y-9.4, 1.2, 9.4, '#8a6448');
+  R(x-4, y-1.6, 2.4, 1.8, '#6a4a34'); R(x+1.6, y-1.6, 2.4, 1.8, '#6a4a34');
+  const cols = chp===1 ? ['#245238','#2e6b46','#3f8a5a'] : chp===2 ? ['#2e6b3a','#3e8b4e','#5cb468'] : ['#8a4f22','#c8763c','#e0a03c'];
+  if (kind==='pine'){
+    for (const [px2, py2, w2] of [[x, y-13, 9], [x, y-18, 7], [x, y-22.5, 4.6]]){
+      tri(px2-w2-1, py2+3.6, px2, py2-4.4, px2+w2+1, py2+3.6, INK);
+    }
+    for (const [px2, py2, w2] of [[x, y-13, 9], [x, y-18, 7], [x, y-22.5, 4.6]]){
+      tri(px2-w2, py2+3, px2, py2-3.6, px2+w2, py2+3, cols[1]);
+      tri(px2-w2+1, py2+3, px2-1, py2-2.4, px2-1, py2+3, cols[2]);
+      tri(px2+1, py2+3, px2+w2-1, py2+3, px2+w2-3, py2+1, cols[0]);
+    }
+    if (chp===1){ R(x-6, y-15.6, 8, 1.6, '#eef2f4'); R(x-4, y-20.4, 6, 1.6, '#eef2f4'); R(x-2, y-24.6, 4, 1.4, '#eef2f4'); }
+  } else {
+    circle(x-4, y-13, 6, INK); circle(x+4, y-13, 6, INK); circle(x, y-18.5, 7, INK);
+    circle(x-4, y-13, 5.2, cols[1]); circle(x+4, y-13, 5.2, cols[0]);
+    circle(x, y-18.5, 6.2, cols[1]);
+    circle(x-2, y-20.5, 3, cols[2]); circle(x-5.5, y-15, 2.4, cols[2]);
+    circle(x+3, y-11, 3.4, cols[0]);
+    if (chp===3){ R(x-7, y-9.6, 2.4, 2, cols[2]); R(x+5, y-7.6, 2.4, 2, cols[1]); }
+  }
+}
+function drawWell(x, y){
+  cx.fillStyle='rgba(0,0,0,0.22)';
+  cx.beginPath(); cx.ellipse(x*P, (y-1)*P, 10*P, 2.4*P, 0, 0, Math.PI*2); cx.fill();
+  R(x-9, y-9, 18, 9, INK);
+  R(x-8, y-8, 16, 8, '#9a9aa4');
+  R(x-8, y-8, 16, 1.6, '#7c7c88');
+  for (let i=0;i<4;i++){ R(x-7+i*4, y-6, 3, 2.6, '#b0b0ba'); R(x-5+i*4-2, y-3, 3, 2.4, '#8c8c98'); }
+  R(x-6, y-7.4, 12, 4, '#16253c');
+  R(x-6, y-7.4, 12, 1, '#2c4668');
+  R(x-8, y-21, 2.6, 13, INK); R(x-7.6, y-20.6, 1.8, 12.6, '#6a4a34');
+  R(x+5.4, y-21, 2.6, 13, INK); R(x+5.8, y-20.6, 1.8, 12.6, '#6a4a34');
+  R(x-1, y-18, 1, 6, '#8a6a48');
+  R(x-2.6, y-12.6, 4.4, 3.6, INK); R(x-2, y-12, 3.2, 2.6, '#8a6844');
+  drawRoof(x-8, y-22, 16);
+}
+function drawShrine(x, y){
+  R(x-17, y-4.6, 34, 4.6, INK);
+  R(x-16, y-4, 32, 4, '#9a9aa4'); R(x-16, y-4, 32, 1, '#b0b0ba');
+  R(x-14, y-25, 4, 21, INK); R(x-13.4, y-24.4, 2.8, 20.4, '#a03428'); R(x-13, y-24.4, 1, 20.4, '#c85040');
+  R(x+10, y-25, 4, 21, INK); R(x+10.6, y-24.4, 2.8, 20.4, '#a03428'); R(x+11, y-24.4, 1, 20.4, '#c85040');
+  drawRoof(x-14, y-26, 28);
+  R(x-9, y-17, 18, 13, INK);
+  R(x-8, y-16, 16, 12, '#3a2c24');
+  R(x-6, y-14, 12, 8, '#f4e8d0');
+  R(x-6, y-14, 12, 1, '#d8c8a4');
+  hanzi('詩', x, y-10, 6, '#a03428');
+  R(x-3.6, y-4.6, 7.2, 4.6, INK); R(x-3, y-4, 6, 4, '#7a6a3a'); R(x-3, y-4, 6, 1, '#9a8a52');
+  R(x-1, y-8, 1, 4, '#c8b8a0'); R(x+1, y-7, 1, 3, '#c8b8a0');
+  glow(x, y-9, 3, '#e8e4dc', 0.3);
+}
+function drawPavilion(x, y){
+  R(x-21, y-4.6, 42, 4.6, INK);
+  R(x-20, y-4, 40, 4, '#a89a86'); R(x-20, y-4, 40, 1, '#c0b29c');
+  for (const px2 of [x-17, x-9, x+7, x+15]){
+    R(px2-0.6, y-27, 4, 23, INK); R(px2, y-26.4, 2.8, 22.4, '#a03428'); R(px2+0.4, y-26.4, 1, 22.4, '#c85040');
+  }
+  drawRoof(x-18, y-28, 36);
+  R(x-15, y-13, 30, 2.6, INK);
+  R(x-14.4, y-12.6, 28.8, 1.8, '#c04434');
+  circle(x, y-31, 2, INK); circle(x, y-31.2, 1.5, '#f2b632');
+}
+/* ============================================================
    DATA — facts, sources, map, NPCs, quizzes
    All festival facts checked against the sources listed below.
    ============================================================ */
@@ -1558,7 +1942,7 @@ const world = {
       drawPerson(this.px-cam, this.py-camY, {...playerLook(), dir:this.dir, walk:this.walking}, G.time);
     }});
     // Lóng
-    items.push({y:this.ly+30, f:()=> drawLong(this.lx-cam, this.ly-camY, G.time, this.lx>this.px)});
+    items.push({y:this.ly+30, f:()=> drawLong(this.lx-cam, this.ly-camY, G.time, this.lx>this.px, 0.75)});
     items.sort((a,b)=>a.y-b.y);
     for (const it of items) it.f();
     drawParts(cam, camY);
@@ -2176,7 +2560,7 @@ const homeScene = {
     // shelf with teapot (+ paper dragon at the end)
     R(250,34,50,4,'#5a3828');
     R(258,26,14,8,'#3e7b6e'); R(270,28,4,3,'#3e7b6e'); R(262,22,6,4,'#3e7b6e');
-    if (this.mode==='ending'){ drawLong(288, 28, G.time*0.7, true); }
+    if (this.mode==='ending'){ drawLong(290, 24, G.time*0.7, true, 0.35); }
     // feast table
     drawTable(100,140,120);
     drawFish(140,128,1.1);
