@@ -30,9 +30,11 @@ appear automatically).
 | J | Open the Wisdom Scroll Journal |
 | M | Mute / unmute all sound |
 
-Every minigame and boss fight opens with a **briefing card** that explains the
-real tradition behind it, lists the numbered steps you are about to do, and
-shows the controls — nothing starts until you press **GOT IT**.
+A **HOW TO PLAY** card with all the controls opens the game (and lives on the
+title menu, any time you need it), and every minigame and boss fight opens
+with its own **briefing card** — the real tradition behind it, the numbered
+steps you are about to do, and the controls. Nothing starts until you press
+**GOT IT**.
 
 The game **saves automatically** — you can close it and press CONTINUE later.
 
