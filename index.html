@@ -3421,6 +3421,256 @@ function makeSweepBattle(onDone){
   };
 }
 /* ============================================================
+   UNCLE BO'S DOOR — three hands-on stages
+     1. INK & BRUSH   write the character 福 stroke by stroke
+     2. HANG THEM     paste the spring couplets straight
+     3. THE FLIP      decide which way up 福 goes  (dào = arrives)
+   ============================================================ */
+
+function inkSfx(){ noiseHit(0.14, 0.16); tone(240, 0.1, 'triangle', 0.12); }
+function pasteSfx(){ noiseHit(0.1, 0.2); tone(420, 0.08, 'sine', 0.16); tone(560, 0.09, 'sine', 0.12, 0.05); }
+
+/* the six brush strokes that build 福 */
+const FU_STROKES = [
+  { dir:'right', x:126, y:56, w:68, h:13, label:'held ▶' },
+  { dir:'down',  x:126, y:56, w:17, h:60, label:'held ▼' },
+  { dir:'right', x:126, y:70, w:68, h:12, label:'held ▶' },
+  { dir:'down',  x:176, y:56, w:18, h:60, label:'held ▼' },
+  { dir:'right', x:126, y:83, w:68, h:13, label:'held ▶' },
+  { dir:'right', x:126, y:97, w:68, h:19, label:'held ▶' },
+];
+const ARROW_OF = { right:'▶', left:'◀', up:'▲', down:'▼' };
+
+function drawDoorPanel(t){
+  // a doorway to decorate
+  R(126, 50, 68, 96, '#2b1a26');
+  R(128, 52, 64, 92, '#efe0c2');
+  R(130, 54, 60, 88, '#4a2c1c');
+  R(130, 54, 60, 2, '#2e1a10');
+  R(159, 54, 2, 88, '#5a3828');
+  R(136, 60, 20, 30, '#5a3828'); R(164, 60, 20, 30, '#5a3828');
+  circle(154, 104, 2.4, '#c07c1c'); circle(166, 104, 2.4, '#c07c1c');
+  R(120, 44, 80, 7, '#2b1a26');
+  R(122, 45, 76, 5, '#7a5a40');
+  drawRoof(126, 42, 68);
+}
+
+function makeDoorGame(onDone){
+  const st = {
+    stage:1, t:0, evT:0, msg:'', msgT:0, msgC:'#ffe9b0',
+    // stage 1
+    si:0, prog:0, wrongT:0, brushX:0, brushY:0,
+    // stage 2
+    papers:[
+      { name:'left couplet',  tx:118, ty:100, w:13, h:60, x:60,  y:150, vertical:true,  chars:'春满乾坤' },
+      { name:'right couplet', tx:202, ty:100, w:13, h:60, x:262, y:150, vertical:true,  chars:'福满门庭' },
+      { name:'top banner',    tx:160, ty:37,  w:60, h:13, x:160, y:158, vertical:false, chars:'迎春接福' },
+    ],
+    pi:0, wob:0, placed:[],
+    // stage 3
+    rot:0, tries:0,
+    done:false,
+  };
+  window.BODOOR = st;
+  function say2(m,c){ st.msg=m; st.msgT=1.3; st.msgC=c||'#ffe9b0'; }
+
+  return {
+    update(dt){
+      st.t += dt; st.evT += dt;
+      st.msgT = Math.max(0, st.msgT-dt);
+      st.wrongT = Math.max(0, st.wrongT-dt);
+      st.wob += dt;
+      updateParts(dt);
+
+      /* ---------- stage 1: write 福 ---------- */
+      if (st.stage===1){
+        const s = FU_STROKES[st.si];
+        if (!s) return;
+        const held = keys[s.dir];
+        const anyOther = ['up','down','left','right'].some(k=> k!==s.dir && keys[k]);
+        if (held){
+          st.prog += dt * 1.55;
+          if (Math.random()<0.5) spawnPart({ x:st.brushX+rnd(-2,2), y:st.brushY+rnd(-2,2), vx:0, vy:rnd(4,12),
+                                             g:0, life:0.4, t:0, c:'#2b1a26', sz:1.4 });
+          if (st.prog>=1){
+            st.prog = 0; st.si++; inkSfx();
+            burst(st.brushX, st.brushY, ['#2b1a26','#5a4048'], 8, 24);
+            if (st.si >= FU_STROKES.length){
+              st.stage = 2; st.evT = 0; SFX.good();
+              say2('Beautiful! Now hang them.', '#7ce87c');
+            } else say2(pick(['ink flows…','good hand!','keep going']), '#cfc0a8');
+          }
+        } else if (anyOther){ st.wrongT = 0.2; }
+        return;
+      }
+
+      /* ---------- stage 2: hang the couplets ---------- */
+      if (st.stage===2){
+        const p = st.papers[st.pi];
+        if (!p) return;
+        const sp = 78;
+        if (keys.left)  p.x -= sp*dt;
+        if (keys.right) p.x += sp*dt;
+        if (keys.up)    p.y -= sp*dt;
+        if (keys.down)  p.y += sp*dt;
+        p.x = clamp(p.x, 20, 300); p.y = clamp(p.y, 26, 168);
+        // paper sways a little in your hands
+        const swx = Math.sin(st.wob*2.3)*1.6, swy = Math.cos(st.wob*1.9)*1.2;
+        p.sx = p.x + swx; p.sy = p.y + swy;
+        if (just.a){
+          const off = dist(p.sx, p.sy, p.tx, p.ty);
+          if (off < 9){
+            pasteSfx(); SFX.good();
+            st.placed.push({ ...p, x:p.tx, y:p.ty });
+            burst(p.tx, p.ty, ['#f2b632','#ffe98a'], 14, 34);
+            st.pi++;
+            if (st.pi >= st.papers.length){ st.stage=3; st.evT=0; say2('Now the big one…', '#ffe9b0'); }
+            else say2(pick(['Straight as a ruler!','Perfect!','That is the one.']), '#7ce87c');
+          } else {
+            SFX.bad(); st.wrongT = 0.3;
+            say2(off < 22 ? 'Almost — line it up!' : 'CROOKED! Try again.', '#ff8a70');
+          }
+        }
+        return;
+      }
+
+      /* ---------- stage 3: which way up? ---------- */
+      if (st.stage===3){
+        if (st.done){
+          if (st.evT>2.6 || (just.a && st.evT>1.2)){ popScene(); onDone(); }
+          return;
+        }
+        if (keys.left)  st.rot -= 150*dt;
+        if (keys.right) st.rot += 150*dt;
+        st.rot = (st.rot % 360 + 360) % 360;
+        if (just.a){
+          const upsideDown = Math.abs(st.rot - 180) < 32;
+          if (upsideDown){
+            st.done = true; st.evT = 0; st.rot = 180;
+            SFX.gong(); SFX.win();
+            burst(160, 96, ['#f2b632','#ff5838','#ffe98a','#7ce87c'], 50, 90);
+          } else {
+            st.tries++; SFX.bad(); st.wrongT = 0.35;
+            say2(st.tries===1 ? 'Uncle Bo: "Wait wait wait — THINK."'
+               : st.tries===2 ? '"dào = upside down. dào = ARRIVES."'
+               : '"Spin it all the way over, kid!"', '#ff8a70');
+          }
+        }
+      }
+    },
+
+    render(){
+      const shx = st.wrongT>0 ? Math.round(Math.sin(st.t*60)*2) : 0;
+      cx.save(); cx.translate(shx*P, 0);
+      // street at night
+      R(0,0,LW,LH,'#241a2c');
+      R(0,146,LW,34,'#3a2a20');
+      for (let i=0;i<LW;i+=16) cobbleTile(i, 146, i/16, 9, COB_P);
+      R(0,44,LW,102,'#7a5a40');
+      for (let i=0;i<LW;i+=24) R(i, 44, 1, 102, 'rgba(0,0,0,0.12)');
+      drawLantern(66, 44, 1.1, true, st.t);
+      drawLantern(254, 44, 1.1, true, st.t+1.4);
+      drawDoorPanel(st.t);
+      drawPerson(84, 150, {...NPCS.bo.look, dir:'right'}, st.t);
+      drawPerson(232, 152, {...playerLook(), dir:'left'}, st.t);
+
+      /* stage 1 — the paper on a table */
+      if (st.stage===1){
+        R(114, 44, 92, 84, '#2b1a26');
+        R(116, 46, 88, 80, '#f7edd6');
+        for(let i=0;i<12;i++){ const h=thash(i,17); R(118+(h*84)%84, 48+(h*61)%76, 1, 1, '#e6d9bb'); }
+        hanzi('福', 160, 86, 46, 'rgba(120,100,90,0.20)');           // faint guide
+        // revealed ink
+        cx.save();
+        cx.beginPath();
+        for (let i=0;i<st.si;i++){ const b = FU_STROKES[i]; cx.rect(b.x*P, b.y*P, b.w*P, b.h*P); }
+        const cur = FU_STROKES[st.si];
+        if (cur){
+          const grow = st.prog;
+          if (cur.dir==='right') cx.rect(cur.x*P, cur.y*P, cur.w*grow*P, cur.h*P);
+          else cx.rect(cur.x*P, cur.y*P, cur.w*P, cur.h*grow*P);
+        }
+        cx.clip();
+        hanzi('福', 160, 86, 46, '#241a20');
+        cx.restore();
+        // brush
+        if (cur){
+          st.brushX = cur.dir==='right' ? cur.x + cur.w*st.prog : cur.x + cur.w/2;
+          st.brushY = cur.dir==='right' ? cur.y + cur.h/2 : cur.y + cur.h*st.prog;
+          R(st.brushX-1, st.brushY-22, 2.6, 17, '#8a6a48');
+          R(st.brushX-1.6, st.brushY-6, 3.6, 7, '#2b1a26');
+          circle(st.brushX, st.brushY, 2, '#2b1a26');
+          // prompt
+          const a = ARROW_OF[cur.dir];
+          T('HOLD  '+a, 160, 132, 8, keys[cur.dir] ? '#7ce87c' : (Math.sin(st.t*6)>0?'#ffe9b0':'#c8a860'), 'center');
+        }
+        // ink progress pips
+        for (let i=0;i<FU_STROKES.length;i++)
+          R(134+i*8, 142, 6, 3, i < st.si ? '#f2b632' : '#5a4a3a');
+      }
+
+      /* stages 2 & 3 — the door */
+      if (st.stage>=2){
+        for (const p of st.placed) drawCouplet(p.x, p.y, p.w, p.h, p.vertical, p.chars);
+        // ghost targets for the piece in hand
+        if (st.stage===2){
+          const p = st.papers[st.pi];
+          if (p){
+            cx.globalAlpha = 0.35 + Math.sin(st.t*4)*0.12;
+            R(p.tx-p.w/2, p.ty-p.h/2, p.w, p.h, '#f2b632');
+            cx.globalAlpha = 1;
+            drawCouplet(p.sx, p.sy, p.w, p.h, p.vertical, p.chars);
+            const off = dist(p.sx, p.sy, p.tx, p.ty);
+            T(off<9 ? '✓ PASTE IT!' : 'line it up…', 160, 160, 6.4, off<9 ? '#7ce87c' : '#cfc0a8', 'center');
+          }
+        }
+        if (st.stage===3){
+          const rad = st.rot*Math.PI/180;
+          cx.save();
+          cx.translate(160*P, 96*P); cx.rotate(rad);
+          R(-13, -13, 26, 26, '#2b1a26');
+          R(-12, -12, 24, 24, '#d43424');
+          R(-11.5, -11.5, 23, 2, '#f06848');
+          hanzi('福', 0, 0, 17, '#f2b632');
+          cx.restore();
+          if (!st.done){
+            T('◀ ▶ turn it   ·   ✓ paste', 160, 154, 6.4, '#ffe9b0', 'center');
+            T(Math.round(st.rot)+'°', 160, 164, 5.4, '#8a7c6a', 'center');
+          }
+        }
+      }
+      drawParts(0,0);
+      cx.restore();
+
+      /* HUD */
+      const titles = {1:'INK & BRUSH', 2:'HANG THE COUPLETS', 3:'WHICH WAY UP?'};
+      const subs = {1:'write 福 — good fortune', 2:'paste them straight, Uncle Bo is watching', 3:'think about what dào means…'};
+      mgHeader("UNCLE BO'S DOOR", subs[st.stage]);
+      T(titles[st.stage], 10, 30, 6, '#f2b632');
+      T('STAGE '+st.stage+' / 3', 312, 30, 5.4, '#8a7c6a', 'right');
+      if (st.stage===3 && st.done){
+        box(28, 54, 264, 52);
+        T('FORTUNE HAS ARRIVED!', LW/2, 60, 8.4, '#f2b632','center');
+        T('“Upside down” (dào) sounds just like “arrives” (dào) —', LW/2, 76, 5.4, '#f4e8d0','center');
+        T('so an upside-down 福 shouts it to the whole street.', LW/2, 86, 5.4, '#f4e8d0','center');
+        T('✓', LW/2, 96, 6, '#cfc0a8','center');
+      }
+      if (st.msgT>0 && !(st.stage===3&&st.done)) T(st.msg, LW/2, 120, 6.6, st.msgC, 'center');
+    }
+  };
+}
+
+function drawCouplet(x, y, w, h, vertical, chars){
+  R(x-w/2-1, y-h/2-1, w+2, h+2, '#2b1a26');
+  R(x-w/2, y-h/2, w, h, '#d43424');
+  R(x-w/2, y-h/2, w, 1.4, '#f06848');
+  const n = chars.length;
+  for (let i=0;i<n;i++){
+    if (vertical) hanzi(chars[i], x, y-h/2+ (h/n)*(i+0.5), 8, '#f2b632');
+    else hanzi(chars[i], x-w/2 + (w/n)*(i+0.5), y, 8, '#f2b632');
+  }
+}
+/* ============================================================
    STORY — title, home, cutscenes, journal, chapter cards
    ============================================================ */
 
@@ -4089,308 +4339,6 @@ function chapterTick(dt){
   }
 }
 
-/* ---------- the NIAN BOSS FIGHT: real-time arena ---------- */
-function roarSfx(){ noiseHit(0.5, 0.5, true); tone(60, 0.5, 'sawtooth', 0.35); tone(45, 0.6, 'sine', 0.4); }
-const GY = 152;   // arena ground line
-function makeNianBattle(){
-  const st = {
-    mode:'intro', t:0, evT:0, hintT:9,
-    hp:8, maxHp:8, hearts:3,
-    px:250, pface:-1, moving:false, dashT:0, dashCd:0, inv:0, ghosts:[],
-    throwCd:0, dumps:[], splats:[],
-    nx:70, ncur:70, atk:null, atkCd:1.6, flinch:0,
-    embers:[], fires:[], wave:null,
-    msg:'', msgT:0, msgC:'#ffe9b0',
-    shake:0, flash:0, danger:false, fledT:-1, wavesSeen:0,
-  };
-  window.BOSS = st;
-  const phase = ()=> st.hp>5 ? 1 : st.hp>2 ? 2 : 3;
-  function say2(m,c){ st.msg=m; st.msgT=1; st.msgC=c||'#ffe9b0'; }
-  function hurt(){
-    if (st.inv>0 || st.mode!=='fight') return;
-    st.hearts--; st.inv = 1.2; st.shake = 0.5;
-    SFX.bad(); noiseHit(0.3,0.4,true);
-    burst(st.px, GY-12, ['#ff8a70','#ffffff'], 16, 60);
-    if (st.hearts<=0){ st.mode='lose'; st.evT=0; st.atk=null; st.wave=null; st.embers=[]; }
-  }
-  function pickAttack(){
-    const ph = phase();
-    const pool = ph===1 ? ['pounce','embers','embers','pounce']
-               : ph===2 ? ['pounce','embers','wave','pounce','embers','wave']
-               : ['wave','pounce','embers','pounce','wave','embers','pounce'];
-    const kind = pool[Math.floor(Math.random()*pool.length)];
-    const warn = ph===1 ? 0.85 : ph===2 ? 0.7 : 0.55;
-    st.atk = { kind, ph:'warn', t:0, warn, target: st.px, from: st.ncur };
-    if (kind==='embers'){
-      const n = 2 + ph;
-      st.atk.lands = [];
-      for (let i=0;i<n;i++) st.atk.lands.push(clamp(st.px + rnd(-55, 55), 40, 306));
-    }
-  }
-  function damage(){
-    st.hp--; st.flinch = 0.35; st.flash = 0.3;
-    SFX.splat(); burst(st.ncur+10, GY-30, ['#f6ecd8','#ffe98a','#ff8656'], 22, 70);
-    if (st.hp===5 || st.hp===2){
-      SFX.gong(); roarSfx(); st.shake = 0.7;
-      say2(st.hp===5 ? 'NIAN IS FURIOUS!' : 'FINAL STAND!', '#ff8a70');
-      st.atkCd = Math.min(st.atkCd, 0.5);
-    }
-    if (st.hp<=0){
-      st.mode='win'; st.evT=0; st.fledT=-1; st.atk=null; st.wave=null; st.embers=[]; st.fires=[];
-      playMusic(1); SFX.win();
-    }
-  }
-  return {
-    usesDash:true,
-    enter(){ playMusic(4); },
-    update(dt){
-      st.t+=dt; st.evT+=dt;
-      st.msgT=Math.max(0,st.msgT-dt); st.shake=Math.max(0,st.shake-dt);
-      st.flash=Math.max(0,st.flash-dt); st.flinch=Math.max(0,st.flinch-dt);
-      st.inv=Math.max(0,st.inv-dt); st.hintT=Math.max(0,st.hintT-dt);
-      updateParts(dt);
-      st.ghosts = st.ghosts.filter(g=> (g.t+=dt) < 0.25);
-      if (st.mode==='intro'){
-        if (st.evT>1.6){ st.mode='fight'; say2('THROW! DODGE! SURVIVE!'); }
-        return;
-      }
-      if (st.mode==='lose'){
-        if (just.a && st.evT>0.8){
-          st.hp=st.maxHp; st.hearts=3; st.px=250; st.nx=70; st.ncur=70;
-          st.dumps=[]; st.embers=[]; st.fires=[]; st.wave=null; st.atk=null; st.atkCd=1.6;
-          st.mode='intro'; st.evT=0; st.inv=0;
-        }
-        return;
-      }
-      if (st.mode==='win'){
-        if (st.fledT<0) st.fledT = st.t;
-        if (Math.random()<0.12) burst(rnd(60,260), rnd(40,110), ['#ff5838','#f2b632','#7ce87c','#cfe4f4'], 16, 60);
-        if (st.evT>2.2){
-          popScene();
-          say([
-            {who:'Elder Shan', port:port('elder'), text:"GUO NIAN! WE HAVE PASSED THE YEAR! Ha-HA! Did you SEE it run?!"},
-            {who:'Mei', port:NPCS.mei.look, text:"My dumplings! My beautiful dumplings! …Worth it."},
-            {who:'Lóng', port:LONG_PORTRAIT, text:"Fed, deafened, and dazzled — the beast won't return for a whole year. And when it does, we'll be ready. We ALWAYS are."},
-            {who:'Elder Shan', port:port('elder'), text:"Find me at the tea house, child. Dawn brings one more tradition — the sweetest one of all."},
-          ], ()=> setStep(6));
-        }
-        return;
-      }
-      /* ----- FIGHT ----- */
-      // player movement
-      let mvx = 0;
-      if (keys.left) mvx = -1; else if (keys.right) mvx = 1;
-      if (mvx) st.pface = mvx;
-      st.moving = !!mvx;
-      st.dashCd = Math.max(0, st.dashCd-dt);
-      st.dashT = Math.max(0, st.dashT-dt);
-      if ((just.dash || just.b) && st.dashCd<=0){
-        st.dashT = 0.16; st.dashCd = 0.65; st.inv = Math.max(st.inv, 0.3);
-        SFX.dash();
-      }
-      const spd = st.dashT>0 ? 300 : 100;
-      if (st.dashT>0){
-        st.ghosts.push({x:st.px, t:0});
-        st.px += (mvx || st.pface) * spd * dt;
-      } else st.px += mvx * spd * dt;
-      st.px = clamp(st.px, 34, 306);
-      if (Math.abs(st.px - st.ncur) < 30) st.px = st.ncur + 30 * Math.sign(st.px - st.ncur || 1);
-      // throw dumplings
-      st.throwCd = Math.max(0, st.throwCd-dt);
-      if (just.a && st.throwCd<=0){
-        st.throwCd = 0.42;
-        const dirTo = st.ncur < st.px ? -1 : 1;
-        st.dumps.push({x:st.px+dirTo*8, y:GY-16, vx:dirTo*185, vy:-95});
-        noiseHit(0.05,0.12); tone(700,0.06,'sine',0.12);
-      }
-      for (const d of st.dumps){
-        d.x += d.vx*dt; d.y += d.vy*dt; d.vy += 300*dt;
-        if (Math.abs(d.x - st.ncur) < 30 && d.y > GY-52 && d.y < GY){
-          d.hit = true; damage();
-        } else if (d.y >= GY-2){
-          d.hit = true;
-          st.splats.push({x:d.x, t:0});
-          burst(d.x, GY-3, ['#f6ecd8','#e8d8b8'], 8, 30);
-        }
-      }
-      st.dumps = st.dumps.filter(d=>!d.hit && d.x>-20 && d.x<340);
-      st.splats = st.splats.filter(sp=> (sp.t+=dt) < 1.2);
-      // Nian drifts forward slowly
-      if (!st.atk) st.nx = Math.min(110, st.nx + dt*2.5);
-      // attacks
-      if (st.atk){
-        const a = st.atk; a.t += dt;
-        if (a.ph==='warn'){
-          if (a.kind==='pounce' && a.t > a.warn*0.55) a.target = clamp(st.px, 50, 296); // late lock
-          if (a.t >= a.warn){
-            a.ph='go'; a.t=0;
-            if (a.kind==='wave'){ st.wave = {x: st.ncur+26}; roarSfx(); st.wavesSeen++; if (st.wavesSeen===1) say2('DASH through the wave! (SPACE)', '#7ce87c'); st.atk=null; st.atkCd = phase()===3?1.2:1.8; }
-            if (a.kind==='embers'){
-              for (const lx of a.lands){
-                const fl = 0.75 + rnd(0.15);
-                st.embers.push({x:st.ncur+14, y:GY-38, lx, t:0, fl});
-              }
-              noiseHit(0.2,0.3); st.atk=null; st.atkCd = phase()===3?1.1:1.7;
-            }
-            if (a.kind==='pounce') noiseHit(0.15,0.35);
-          }
-        } else if (a.kind==='pounce'){
-          const dur = 0.4;
-          const k = Math.min(a.t/dur, 1);
-          st.ncur = a.from + (a.target - a.from)*k;
-          if (a.t >= dur && !a.landed){
-            a.landed = true; st.shake = Math.max(st.shake, 0.35);
-            mdrum(0, 0.5); burst(st.ncur, GY-4, ['#c8b696','#8a8a92'], 18, 50);
-            if (Math.abs(st.px - st.ncur) < 30) hurt();
-          }
-          if (a.t >= dur + 0.45){
-            const back = a.t - dur - 0.45;
-            const k2 = Math.min(back/0.35, 1);
-            st.ncur = a.target + (st.nx - a.target)*k2;
-            if (k2>=1){ st.atk=null; st.atkCd = phase()===3?1.0:1.6; }
-          }
-        }
-      } else {
-        st.ncur = st.nx;
-        st.atkCd -= dt;
-        if (st.atkCd <= 0) pickAttack();
-      }
-      // embers fall
-      for (const e of st.embers){
-        e.t += dt;
-        const k = Math.min(e.t/e.fl, 1);
-        e.cx = e.x + (e.lx - e.x)*k;
-        e.cy = (GY-38) - Math.sin(k*Math.PI)*46 + k*36;
-        if (k>=1 && !e.done){
-          e.done = true;
-          burst(e.lx, GY-4, ['#ff7030','#f2b632'], 14, 45);
-          noiseHit(0.1,0.25);
-          st.fires.push({x:e.lx, t:0});
-          if (Math.abs(st.px - e.lx) < 17) hurt();
-        }
-      }
-      st.embers = st.embers.filter(e=>!e.done);
-      for (const f of st.fires){
-        f.t += dt;
-        if (f.t < 0.5 && Math.abs(st.px - f.x) < 12) hurt();
-      }
-      st.fires = st.fires.filter(f=> f.t < 0.7);
-      // shockwave travels
-      if (st.wave){
-        st.wave.x += 150*dt;
-        if (Math.abs(st.wave.x - st.px) < 10) hurt();
-        if (st.wave.x > 330) st.wave = null;
-      }
-      // danger flag (for assist/testing)
-      st.danger = !!(
-        (st.wave && st.wave.x < st.px && st.px - st.wave.x < 55) ||
-        (st.atk && st.atk.kind==='pounce' && Math.abs(st.atk.target - st.px) < 40) ||
-        st.embers.some(e=> Math.abs(e.lx - st.px) < 26 && e.t/e.fl > 0.4) ||
-        st.fires.some(f=> f.t < 0.5 && Math.abs(f.x - st.px) < 18)
-      );
-    },
-    render(){
-      const shx = st.shake>0 ? Math.round(Math.sin(st.t*70)*st.shake*4) : 0;
-      cx.save(); cx.translate(shx*P, 0);
-      R(0,0,LW,LH,'#10102a');
-      for(let i=0;i<30;i++){ const h=thash(i,5); R(h*LW, thash(i,11)*60, 1.2, 1.2, '#8a8ab4'); }
-      R(0,GY-2,LW,LH-GY+2,'#1c1830');
-      drawHouse({x:116,y:52,w:78,ht:34,door:32,sign:'TEA HOUSE'},
-        {couplets:true, fu:true, lanterns:true, lit:true});
-      // fires + splats on the ground
-      for (const sp of st.splats){ cx.globalAlpha = 1-sp.t/1.2; drawDumpling(sp.x, GY-2, 0.8); cx.globalAlpha = 1; }
-      for (const f of st.fires){
-        const a = 1 - f.t/0.7;
-        cx.globalAlpha = a;
-        tri(f.x-5, GY-1, f.x-2, GY-9-Math.sin(st.t*20)*2, f.x+1, GY-1, '#ff7030');
-        tri(f.x-1, GY-1, f.x+2, GY-7-Math.cos(st.t*24)*2, f.x+5, GY-1, '#f2b632');
-        cx.globalAlpha = 1;
-        glow(f.x, GY-5, 9, '#ff7030', 0.25*a);
-      }
-      // ember landing markers
-      for (const e of st.embers){
-        if (Math.sin(st.t*14)>-0.3){ ell(e.lx, GY-1, 8, 2, 'rgba(255,80,40,0.55)'); T('⚠', e.lx-3, GY-11, 5, '#ff7030'); }
-      }
-      // pounce target marker
-      if (st.atk && st.atk.kind==='pounce'){
-        const blink = Math.sin(st.t*16)>0;
-        ell(st.atk.target, GY-1, 24, 3, blink?'rgba(255,80,40,0.5)':'rgba(255,140,80,0.3)');
-      }
-      // shockwave
-      if (st.wave){
-        for (let k=0;k<4;k++){
-          tri(st.wave.x-6+k*3, GY-1, st.wave.x-4+k*3, GY-12-((k%2)*4), st.wave.x-2+k*3, GY-1, k%2?'#ff7030':'#f2b632');
-        }
-        glow(st.wave.x, GY-6, 12, '#ff7030', 0.3);
-        burst; // (particles via fires style)
-      }
-      // embers in flight
-      for (const e of st.embers){
-        if (e.cx!==undefined){
-          circle(e.cx, e.cy, 2.4, '#ff7030'); circle(e.cx-1, e.cy-1, 1, '#ffe98a');
-          glow(e.cx, e.cy, 5, '#ff7030', 0.3);
-        }
-      }
-      // dumplings in flight
-      for (const d of st.dumps){ drawDumpling(d.x, d.y, 1); }
-      // dash ghosts
-      for (const gh of st.ghosts){
-        cx.globalAlpha = 0.35*(1-gh.t/0.25);
-        R(gh.x-6, GY-20, 12, 20, playerLook().top||'#e8b028');
-        cx.globalAlpha = 1;
-      }
-      // player (blink while invincible)
-      if (!(st.inv>0.3 && Math.sin(st.t*40)>0)){
-        drawPerson(st.px, GY, {...playerLook(), dir: st.pface<0?'left':'right', walk: st.moving||st.dashT>0}, st.t);
-      }
-      // basket on your back (dumpling supply!)
-      R(st.px + (st.pface<0?4:-8), GY-16, 5, 6, '#a87048');
-      R(st.px + (st.pface<0?4:-8), GY-17, 5, 1, '#8a5a38');
-      // NIAN
-      if (st.mode==='win'){
-        const fx = st.ncur - (st.t-st.fledT)*110;
-        if (fx > -80) drawNian(fx, GY, st.t*3);
-      } else {
-        const crouch = st.atk && st.atk.kind==='pounce' && st.atk.ph==='warn';
-        drawNian(st.ncur, GY + (crouch? 2:0), crouch ? st.t*6 : st.t);
-        if (st.flinch>0 && Math.sin(st.t*50)>0){ cx.globalAlpha=0.4; R(st.ncur-28, GY-44, 62, 44, '#ffffff'); cx.globalAlpha=1; }
-        if (st.atk && st.atk.ph==='warn' && st.atk.kind!=='pounce' && Math.sin(st.t*14)>0) T('!', st.ncur+12, GY-52, 9, '#ff5030');
-      }
-      drawParts(0,0);
-      cx.restore();
-      // HUD
-      mgHeader('NIAN AT THE GATES', 'a real boss. good luck.');
-      T('NIAN', 10, 30, 5.4, '#ff8a70');
-      R(34, 30, 100, 7, 'rgba(20,12,16,0.85)');
-      R(34, 30, 100, 1, '#6a5a48'); R(34, 36, 100, 1, '#6a5a48');
-      for (let i=0;i<st.maxHp;i++) R(35.5+i*12.3, 31.2, 10.8, 4.6, i < st.hp ? '#e03c28' : '#3a2328');
-      for (let i=0;i<3;i++) drawLantern(288+i*11, 27, 0.8, i < st.hearts, st.t);
-      // dash cooldown pip
-      R(276, 44, 38, 4, 'rgba(20,12,16,0.85)');
-      R(276, 44, 38*(1 - st.dashCd/0.65), 4, st.dashCd<=0 ? '#7ce87c' : '#8a7c6a');
-      T('DASH', 254, 43, 4.6, '#8a7c6a');
-      if (st.mode==='intro'){
-        T('THE VILLAGE FIGHTS BACK!', LW/2, 88, 8.4, '#ff8a70','center');
-      }
-      if (st.hintT>0 && st.mode==='fight'){
-        T('◀▶ move · SPACE dash (dodges!) · ✓ throw dumplings', LW/2, 96, 5.4, '#cfc0a8','center');
-      }
-      if (st.mode==='win'){
-        box(46,58,228,44);
-        T('GUO NIAN!', LW/2, 65, 9, '#f2b632','center');
-        T('You have passed over the year!', LW/2, 80, 6, '#f4e8d0','center');
-      } else if (st.mode==='lose'){
-        box(36,54,248,56);
-        T('THE VILLAGE HIDES…', LW/2, 61, 8.4, '#ff8a70','center');
-        T('Nian prowls until you stand again.', LW/2, 76, 5.8, '#f4e8d0','center');
-        T('✓ TRY AGAIN', LW/2, 90, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
-      }
-      if (st.msgT>0) T(st.msg, LW/2, 116, 7, st.msgC, 'center');
-      T('Phase '+phase()+' / 3', 292, 168, 5, '#8a7c6a','center');
-    }
-  };
-}
-
 /* ---------- ceremonies ---------- */
 function ceremony(flagName, lines, after){
   G.flags[flagName] = true;
@@ -4473,7 +4421,7 @@ const talks = {
       else if (G.step===6){
         say([
           {who:'Mei', port:port('mei'), text:"Before you go… here. A red envelope. My favorite tradition."},
-          {who:'Mei', port:port('mei'), text:"Give it back to me someday — oh, in about fifty years. Promise?"},
+          {who:'Mei', port:port('mei'), text:"Give it back to me someday — oh, in about sixty-five years. Promise?"},
           {who:G.name, port:playerLook(), text:"…Deal. But that's a weird thing to— wait. Two hair buns. Dumpling recipe. NO WAY—"},
           {who:'Lóng', port:LONG_PORTRAIT, text:"Nǎi Nai is waiting for her dumplings, little keeper. Close your eyes."},
         ], ()=>{
@@ -4538,18 +4486,14 @@ const talks = {
     const B = port('bo');
     if (G.ch===1 && G.step===3){
       say([
-        {who:'Uncle Bo', port:B, text:"Perfect timing! Help me paste the chūnlián — spring couplets. Little poems of good wishes, one for each side of the door."},
-        {who:'Uncle Bo', port:B, text:"And now the important one. The square with 福 — fú, 'good fortune.' Tell me, which way does it go?"},
-        { choice:['Right side up, obviously','Upside down!'], q:'Which way should the fú go?', cb:(sel)=>{
-          const first = sel===0
-            ? {who:'Uncle Bo', port:B, text:"HA! That's what everyone says. Watch this—"}
-            : {who:'Uncle Bo', port:B, text:"Ohhh, someone knows the secret already!"};
-          say([ first,
-            {who:'Uncle Bo', port:B, text:"We paste it UPSIDE DOWN — on purpose! In Chinese, 'upside down' (dào) sounds exactly like 'to arrive' (dào)."},
-            {who:'Uncle Bo', port:B, text:"So an upside-down fú shouts to the whole street: GOOD FORTUNE HAS ARRIVED! Word-play, kid. Five thousand years of dad jokes."},
-          ], ()=>{ giveScroll('fu'); setStep(4); });
-        }},
-      ]);
+        {who:'Uncle Bo', port:B, text:"Perfect timing! Help me dress this door. Chunlian — spring couplets. Little poems of good wishes, one for each side."},
+        {who:'Uncle Bo', port:B, text:"But first you WRITE. No shop paper in my house. Brush, ink, and a steady hand — let's see yours."},
+      ], ()=> pushScene(makeDoorGame(()=>{
+        say([
+          {who:'Uncle Bo', port:B, text:"HA! Look at that door. Best on the whole street, and the fu hanging on its head like a happy bat."},
+          {who:'Uncle Bo', port:B, text:"Word-play, kid. Five thousand years of dad jokes, and every single one of them still working."},
+        ], ()=>{ giveScroll('fu'); setStep(4); });
+      })));
     }
     else say([{who:'Uncle Bo', port:B, text: G.ch===1 ? "Look at that door. LOOK at it. Best couplets on the street." : G.ch===2 ? "My money's on Captain Yu's crew. Don't tell the other boat." : "The moon's coming back. I can feel it in my couplets."}]);
   },
@@ -4734,6 +4678,358 @@ function getInteractables(){
     });
   }
   return list;
+}
+/* ============================================================
+   NIAN — top-down boss room, Binding-of-Isaac style
+   8-way movement, dumplings as your shot, bullet-hell patterns,
+   3 phases with rage transitions, ~2 minute fight.
+   ============================================================ */
+
+const NR = { x0:20, x1:300, y0:52, y1:166 };   // room bounds
+function roarSfx(){ noiseHit(0.5, 0.5, true); tone(60, 0.5, 'sawtooth', 0.35); tone(45, 0.6, 'sine', 0.4); }
+function emberSfx(){ noiseHit(0.12, 0.16); tone(320, 0.08, 'sawtooth', 0.1); }
+
+function makeNianBattle(){
+  const st = {
+    usesDash:true,
+    mode:'intro', t:0, evT:0, fightT:0,
+    // player
+    px:250, py:120, dir:'left', moving:false,
+    dashT:0, dashCd:0, inv:0, throwCd:0, hearts:5, maxHearts:5, ghosts:[],
+    // nian
+    nx:90, ny:104, nvx:0, nvy:0, hp:72, maxHp:72, hurtT:0, invuln:false,
+    atk:null, atkCd:1.4, spiralA:0,
+    // stuff
+    dumps:[], embers:[], waves:[], imps:[], drops:[],
+    msg:'', msgT:0, msgC:'#ffe9b0', shake:0, danger:false, fledT:-1, phase:1,
+  };
+  window.BOSS = st;
+  const phaseOf = ()=> st.hp > 48 ? 1 : st.hp > 24 ? 2 : 3;
+  function say2(m,c){ st.msg=m; st.msgT=1.2; st.msgC=c||'#ffe9b0'; }
+
+  function ember(x, y, ang, spd, big){
+    st.embers.push({ x, y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, r: big?4.2:3, t:0 });
+  }
+  function hurtPlayer(){
+    if (st.inv>0 || st.mode!=='fight') return;
+    st.hearts--; st.inv = 1.5; st.shake = 0.55;
+    SFX.bad(); noiseHit(0.3,0.4,true);
+    burst(st.px, st.py-8, ['#ff8a70','#ffffff'], 18, 60);
+    if (st.hearts<=0){ st.mode='lose'; st.evT=0; }
+  }
+  function damageNian(n){
+    if (st.invuln) return;
+    st.hp -= n; st.hurtT = 0.25;
+    SFX.splat(); burst(st.nx+rnd(-8,8), st.ny-18, ['#f6ecd8','#ffe98a'], 10, 45);
+    const ph = phaseOf();
+    if (ph !== st.phase && st.hp > 0){ st.phase = ph; startRage(); }
+    if (st.hp <= 0){
+      st.hp = 0; st.mode='win'; st.evT=0; st.fledT=-1;
+      st.embers=[]; st.waves=[]; st.imps=[]; st.atk=null;
+      playMusic(1); SFX.win();
+    }
+  }
+  function startRage(){
+    st.atk = { kind:'rage', ph:'go', t:0 };
+    st.invuln = true; st.shake = 0.9; roarSfx(); SFX.gong();
+    st.embers = [];                                   // clear the screen on a phase change
+    st.drops.push({ x: clamp(st.px + rnd(-40,40), NR.x0+16, NR.x1-16),
+                    y: clamp(st.py + rnd(-30,30), NR.y0+20, NR.y1-10), t:0 });
+    say2(st.phase===2 ? 'NIAN IS FURIOUS!' : 'FINAL STAND!', '#ff8a70');
+  }
+  function pickAttack(){
+    const ph = phaseOf();
+    const pool = ph===1 ? ['ring','aimed','charge','summon','aimed']
+               : ph===2 ? ['ring','aimed','charge','spiral','stomp','summon','charge']
+               : ['charge','ring','aimed','stomp','charge','aimed','spiral','ring'];
+    st.atk = { kind: pick(pool), ph:'warn', t:0, warn: ph===1?0.9 : ph===2?0.75 : 0.6 };
+    if (st.atk.kind==='charge'){ st.atk.tx = st.px; st.atk.ty = st.py; }
+  }
+
+  return {
+    usesDash:true,
+    enter(){ playMusic(4); },
+    update(dt){
+      st.t += dt; st.evT += dt;
+      st.msgT=Math.max(0,st.msgT-dt); st.shake=Math.max(0,st.shake-dt);
+      st.hurtT=Math.max(0,st.hurtT-dt); st.inv=Math.max(0,st.inv-dt);
+      st.dashT=Math.max(0,st.dashT-dt); st.dashCd=Math.max(0,st.dashCd-dt);
+      st.throwCd=Math.max(0,st.throwCd-dt);
+      st.ghosts = st.ghosts.filter(g=> (g.t+=dt) < 0.25);
+      updateParts(dt);
+
+      if (st.mode==='intro'){ if (st.evT>2 || just.a){ st.mode='fight'; say2('SURVIVE THE NIGHT!'); } return; }
+      if (st.mode==='lose'){
+        if (just.a && st.evT>0.9){
+          st.hp=st.maxHp; st.hearts=st.maxHearts; st.phase=1; st.invuln=false;
+          st.px=250; st.py=120; st.nx=90; st.ny=104;
+          st.embers=[]; st.waves=[]; st.imps=[]; st.dumps=[]; st.drops=[];
+          st.atk=null; st.atkCd=1.4; st.mode='intro'; st.evT=0; st.fightT=0;
+        }
+        return;
+      }
+      if (st.mode==='win'){
+        if (st.fledT<0) st.fledT = st.t;
+        if (Math.random()<0.14) burst(rnd(40,280), rnd(50,130), ['#ff5838','#f2b632','#7ce87c','#cfe4f4'], 14, 60);
+        if (st.evT>2.6){
+          popScene();
+          say([
+            {who:'Elder Shan', port:port('elder'), text:"GUO NIAN! WE HAVE PASSED THE YEAR! Ha-HA! Did you SEE it run?!"},
+            {who:'Mei', port:NPCS.mei.look, text:"My dumplings! My beautiful dumplings! …Worth it."},
+            {who:'Lóng', port:LONG_PORTRAIT, text:"Fed, deafened and dazzled. The beast won't return for a whole year — and when it does, we'll be ready. We ALWAYS are."},
+            {who:'Elder Shan', port:port('elder'), text:"Find me at the tea house, child. Dawn brings one more tradition — the sweetest one of all."},
+          ], ()=> setStep(6));
+        }
+        return;
+      }
+
+      st.fightT += dt;
+
+      /* ---------------- player ---------------- */
+      let vx=0, vy=0;
+      if (keys.left) vx=-1; else if (keys.right) vx=1;
+      if (keys.up) vy=-1; else if (keys.down) vy=1;
+      st.moving = !!(vx||vy);
+      if (vx&&vy){ vx*=0.707; vy*=0.707; }
+      if (vx<0) st.dir='left'; else if (vx>0) st.dir='right';
+      else if (vy<0) st.dir='up'; else if (vy>0) st.dir='down';
+      if (just.dash && st.dashCd<=0){ st.dashT=0.16; st.dashCd=0.62; st.inv=Math.max(st.inv,0.28); SFX.dash(); }
+      const spd = st.dashT>0 ? 290 : 114;
+      if (st.dashT>0 && !vx && !vy){
+        vx = st.dir==='left'?-1: st.dir==='right'?1:0;
+        vy = st.dir==='up'?-1: st.dir==='down'?1:0;
+      }
+      st.px = clamp(st.px + vx*spd*dt, NR.x0+8, NR.x1-8);
+      st.py = clamp(st.py + vy*spd*dt, NR.y0+12, NR.y1-4);
+      if (st.dashT>0) st.ghosts.push({x:st.px, y:st.py, t:0});
+
+      // throw dumplings in the facing direction
+      if (just.a && st.throwCd<=0){
+        st.throwCd = 0.30;
+        const ax = st.dir==='left'?-1: st.dir==='right'?1:0;
+        const ay = st.dir==='up'?-1: st.dir==='down'?1:0;
+        st.dumps.push({ x:st.px+ax*8, y:st.py-8+ay*8, vx:ax*195, vy:ay*195 });
+        noiseHit(0.05,0.1); tone(700,0.05,'sine',0.1);
+      }
+      for (const d of st.dumps){
+        d.x += d.vx*dt; d.y += d.vy*dt;
+        if (!st.invuln && dist(d.x, d.y, st.nx, st.ny-18) < 22){
+          d.hit = true; damageNian(st.atk && st.atk.kind==='charge' && st.atk.ph==='recover' ? 2 : 1);
+        }
+        for (const im of st.imps){
+          if (!im.dead && dist(d.x, d.y, im.x, im.y) < 9){
+            d.hit = true; im.hp--; dustPoof(im.x, im.y);
+            if (im.hp<=0){
+              im.dead = true;
+              if (Math.random()<0.6) st.drops.push({x:im.x, y:im.y, t:0});
+            }
+          }
+        }
+        if (d.x<NR.x0||d.x>NR.x1||d.y<NR.y0||d.y>NR.y1) d.hit = true;
+      }
+      st.dumps = st.dumps.filter(d=>!d.hit);
+      st.imps = st.imps.filter(im=>!im.dead);
+
+      // pickups (red envelopes heal a heart)
+      for (const dp of st.drops){
+        dp.t += dt;
+        if (dist(dp.x, dp.y, st.px, st.py-8) < 12 && st.hearts < st.maxHearts){
+          dp.got = true; st.hearts++; SFX.sparkle(); say2('A red envelope! +1', '#7ce87c');
+        }
+      }
+      st.drops = st.drops.filter(dp=> !dp.got && dp.t < 14);
+
+      /* ---------------- Nian ---------------- */
+      if (!st.atk){
+        // stalk the player slowly
+        const a = Math.atan2(st.py-8-st.ny, st.px-st.nx);
+        const gap = dist(st.nx, st.ny-18, st.px, st.py-8);
+        const push = gap > 96 ? 1 : gap < 58 ? -1.3 : 0;      // stalk, but never smother
+        st.nvx += Math.cos(a)*34*push*dt; st.nvy += Math.sin(a)*26*push*dt;
+        st.atkCd -= dt;
+        if (st.atkCd<=0) pickAttack();
+      }
+      if (st.atk){
+        const A = st.atk; A.t += dt;
+        if (A.ph==='warn'){
+          if (A.kind==='charge'){ A.tx = st.px; A.ty = st.py; }
+          if (A.t >= A.warn){
+            A.ph='go'; A.t=0;
+            const ph = phaseOf();
+            if (A.kind==='ring'){
+              const n = ph===1?8 : ph===2?10 : 11;
+              const off = rnd(Math.PI*2);
+              for (let i=0;i<n;i++) ember(st.nx, st.ny-18, off + i/n*Math.PI*2, 40+ph*4);
+                      emberSfx(); st.atk=null; st.atkCd = ph===3?1.6:1.9;
+            } else if (A.kind==='aimed'){
+              const base = Math.atan2(st.py-8-(st.ny-18), st.px-st.nx);
+              const n = ph===1?3:4;
+              for (let i=0;i<n;i++) ember(st.nx, st.ny-18, base + (i-(n-1)/2)*0.22, 68);
+              emberSfx(); st.atk=null; st.atkCd = ph===3?1.45:1.7;
+            } else if (A.kind==='stomp'){
+              st.waves.push({x:st.nx, y:st.ny-14, r:8});
+              mdrum(0,0.6); st.shake=0.5; st.atk=null; st.atkCd = ph===3?1.8:1.9;
+            } else if (A.kind==='summon'){
+              for (let i=0;i<3;i++) st.imps.push({ x:st.nx+rnd(-16,16), y:st.ny-18+rnd(-12,12), hp:2, dead:false });
+              kingLaugh(); st.atk=null; st.atkCd = 1.9;
+            }
+          }
+        } else if (A.kind==='charge'){
+          if (A.ph==='go'){
+            const a = Math.atan2(A.ty-8-st.ny, A.tx-st.nx);
+            st.nvx = Math.cos(a)*250; st.nvy = Math.sin(a)*250;
+            if (A.t > 0.55 || st.nx<=NR.x0+22 || st.nx>=NR.x1-22 || st.ny<=NR.y0+30 || st.ny>=NR.y1-6){
+              A.ph='recover'; A.t=0; st.nvx*=0.2; st.nvy*=0.2; st.shake=0.4; mdrum(0,0.5);
+            }
+          } else if (A.ph==='recover'){
+            if (A.t > 0.9){ st.atk=null; st.atkCd = phaseOf()===3?1.5:1.7; }
+          }
+        } else if (A.kind==='spiral'){
+          A.dur = (A.dur||0) + dt;
+          st.spiralA += dt*2.6;
+          if (Math.floor(A.dur*7) !== Math.floor((A.dur-dt)*7)){
+            ember(st.nx, st.ny-18, st.spiralA, 58);
+            ember(st.nx, st.ny-18, st.spiralA + Math.PI, 58);
+                      }
+          if (A.dur > 2.0){ st.atk=null; st.atkCd = 1.7; }
+        } else if (A.kind==='rage'){
+          st.spiralA += dt*4.6;
+          if (Math.floor(A.t*8) !== Math.floor((A.t-dt)*8)){
+            for (let k=0;k<3;k++) ember(st.nx, st.ny-18, st.spiralA + k*2.094, 62);
+          }
+          if (A.t > 2.2){ st.invuln=false; st.atk=null; st.atkCd=1.6; st.inv=Math.max(st.inv,0.9); }
+        }
+      }
+      // move Nian
+      st.nx += st.nvx*dt; st.ny += st.nvy*dt;
+      st.nvx *= 0.94; st.nvy *= 0.94;
+      st.nx = clamp(st.nx, NR.x0+22, NR.x1-22);
+      st.ny = clamp(st.ny, NR.y0+30, NR.y1-4);
+      // body contact
+      if (dist(st.px, st.py-8, st.nx, st.ny-18) < 19 && st.dashT<=0) hurtPlayer();
+
+      /* ---------------- projectiles ---------------- */
+      for (const e of st.embers){
+        e.t += dt; e.x += e.vx*dt; e.y += e.vy*dt;
+        if (dist(e.x, e.y, st.px, st.py-8) < e.r+4 && st.dashT<=0){ e.gone=true; hurtPlayer(); }
+        if (e.x<NR.x0-6||e.x>NR.x1+6||e.y<NR.y0-6||e.y>NR.y1+6||e.t>7) e.gone=true;
+      }
+      st.embers = st.embers.filter(e=>!e.gone);
+
+      for (const w of st.waves){
+        w.r += 118*dt;
+        if (Math.abs(dist(st.px, st.py-8, w.x, w.y) - w.r) < 8 && st.dashT<=0) hurtPlayer();
+        if (w.r > 320) w.gone = true;
+      }
+      st.waves = st.waves.filter(w=>!w.gone);
+
+      for (const im of st.imps){
+        const a = Math.atan2(st.py-8-im.y, st.px-im.x);
+        im.x += Math.cos(a)*38*dt; im.y += Math.sin(a)*38*dt;
+        if (dist(im.x, im.y, st.px, st.py-8) < 12 && st.dashT<=0) hurtPlayer();
+      }
+
+      /* danger flag for the auto-tester */
+      st.danger = st.embers.some(e=> dist(e.x,e.y,st.px,st.py-8) < 34)
+        || st.waves.some(w=> Math.abs(dist(st.px,st.py-8,w.x,w.y) - w.r) < 26)
+        || (st.atk && st.atk.kind==='charge' && st.atk.ph==='go')
+        || dist(st.px, st.py-8, st.nx, st.ny-18) < 42
+        || st.imps.some(im=> dist(im.x,im.y,st.px,st.py-8) < 22);
+    },
+
+    render(){
+      const shx = st.shake>0 ? Math.round(Math.sin(st.t*70)*st.shake*4) : 0;
+      cx.save(); cx.translate(shx*P, 0);
+      /* the plaza at night, top-down */
+      R(0,0,LW,LH,'#0e0c1e');
+      for(let i=0;i<26;i++){ const h=thash(i,5); R(h*LW, thash(i,11)*40, 1.2, 1.2, '#8a8ab4'); }
+      R(NR.x0-8, NR.y0-10, NR.x1-NR.x0+16, NR.y1-NR.y0+18, '#241c30');
+      for (let y=NR.y0-8; y<NR.y1+8; y+=16)
+        for (let x=NR.x0-8; x<NR.x1+8; x+=16) cobbleTile(x, y, x/16, y/16, COB_S);
+      cx.globalAlpha = 0.45; R(NR.x0-8, NR.y0-10, NR.x1-NR.x0+16, NR.y1-NR.y0+18, '#141030'); cx.globalAlpha = 1;
+      // lantern posts in the corners
+      for (const [lx,ly] of [[NR.x0+4,NR.y0+4],[NR.x1-4,NR.y0+4],[NR.x0+4,NR.y1-2],[NR.x1-4,NR.y1-2]]){
+        drawLantern(lx, ly-12, 0.9, true, st.t+lx);
+        glow(lx, ly-4, 22, '#ffaa50', 0.16);
+      }
+      // shockwaves
+      for (const w of st.waves){
+        for (let i=0;i<26;i++){
+          const a = i/26*Math.PI*2;
+          R(w.x+Math.cos(a)*w.r, w.y+Math.sin(a)*w.r*0.72, 2.4, 2.4, i%2?'#ff7030':'#f2b632');
+        }
+      }
+      // drops
+      for (const dp of st.drops){
+        const bob = Math.sin(st.t*4+dp.x)*1.5;
+        drawEnvelope(dp.x, dp.y+bob, 0.7, st.t, true);
+      }
+      // depth-sorted actors
+      const items = [];
+      for (const im of st.imps) items.push({y:im.y, f:()=> drawDust(im.x, im.y, 6, st.t, im.x, true)});
+      items.push({y:st.ny, f:()=>{
+        drawNian(st.nx, st.ny, st.t);
+        if (st.hurtT>0) glow(st.nx+2, st.ny-20, 30, '#ffffff', 0.4*(st.hurtT/0.25));
+        if (st.invuln) glow(st.nx+2, st.ny-20, 34, '#ff3820', 0.22);
+      }});
+      items.push({y:st.py, f:()=>{
+        for (const g of st.ghosts){
+          cx.globalAlpha = 0.3*(1-g.t/0.25);
+          R(g.x-6, g.y-20, 12, 20, playerLook().top||'#e8b028');
+          cx.globalAlpha = 1;
+        }
+        if (!(st.inv>0.3 && Math.sin(st.t*40)>0))
+          drawPerson(st.px, st.py, {...playerLook(), dir:st.dir, walk:st.moving||st.dashT>0}, st.t);
+      }});
+      items.sort((a,b)=>a.y-b.y);
+      for (const it of items) it.f();
+      // charge telegraph
+      if (st.atk && st.atk.kind==='charge' && st.atk.ph==='warn'){
+        cx.globalAlpha = 0.5 + Math.sin(st.t*18)*0.2;
+        const a = Math.atan2(st.atk.ty-8-st.ny, st.atk.tx-st.nx);
+        for (let i=1;i<14;i++) R(st.nx+Math.cos(a)*i*14, st.ny-18+Math.sin(a)*i*14, 3, 3, '#ff3820');
+        cx.globalAlpha = 1;
+      }
+      // projectiles on top
+      for (const e of st.embers){
+        circle(e.x, e.y, e.r, '#ff7030'); circle(e.x-0.8, e.y-0.8, e.r*0.5, '#ffe98a');
+        glow(e.x, e.y, e.r*2.6, '#ff7030', 0.22);
+      }
+      for (const d of st.dumps) drawDumpling(d.x, d.y, 1);
+      drawParts(0,0);
+      cx.restore();
+
+      /* HUD */
+      mgHeader('NIAN AT THE GATES', 'survive the night');
+      T('NIAN', 10, 30, 5.4, '#ff8a70');
+      R(34, 30, 150, 7, 'rgba(20,12,16,0.85)');
+      R(34, 30, 150, 1, '#6a5a48'); R(34, 36, 150, 1, '#6a5a48');
+      R(35, 31, 148*clamp(st.hp/st.maxHp,0,1), 5, st.invuln ? '#ffe9b0' : '#e03c28');
+      for (let i=0;i<st.maxHearts;i++) drawLantern(252+i*11, 27, 0.8, i < st.hearts, st.t);
+      R(276, 44, 38, 4, 'rgba(20,12,16,0.85)');
+      R(276, 44, 38*(1-st.dashCd/0.62), 4, st.dashCd<=0 ? '#7ce87c' : '#8a7c6a');
+      T('DASH', 254, 43, 4.6, '#8a7c6a');
+      const mm = Math.floor(st.fightT/60), ssx = Math.floor(st.fightT%60);
+      T('PHASE '+st.phase+'/3   '+mm+':'+(ssx<10?'0':'')+ssx, 10, 42, 5, '#8a7c6a');
+
+      if (st.mode==='intro'){
+        box(30, 66, 260, 48);
+        T('NIAN ATTACKS THE VILLAGE!', LW/2, 72, 8, '#ff8a70','center');
+        T('◀▶▲▼ move · ✓ throw dumplings · SPACE dash', LW/2, 88, 5.6, '#ffe9b0','center');
+        T('dashing makes you untouchable for a moment', LW/2, 99, 5, '#cfc0a8','center');
+      } else if (st.mode==='win'){
+        box(46,64,228,44);
+        T('GUO NIAN!', LW/2, 70, 9, '#f2b632','center');
+        T('You have passed over the year!', LW/2, 86, 6, '#f4e8d0','center');
+      } else if (st.mode==='lose'){
+        box(36,60,248,56);
+        T('THE VILLAGE HIDES…', LW/2, 66, 8.4, '#ff8a70','center');
+        T('Nian prowls until you stand again.', LW/2, 82, 5.8, '#f4e8d0','center');
+        T('✓ TRY AGAIN', LW/2, 96, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+      }
+      if (st.msgT>0 && st.mode==='fight') T(st.msg, LW/2, 126, 7, st.msgC, 'center');
+    }
+  };
 }
 /* ============================================================
    BOOT
