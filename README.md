@@ -19,14 +19,20 @@ appear automatically).
 
 ## Controls
 
-| Key | Action |
+| Input | Action |
 |---|---|
 | Arrow keys / WASD | Walk |
-| Z / Enter | Talk · Confirm (✓) · Throw dumplings |
+| **Mouse** | Aim · click buttons · click to attack and throw |
+| **E** | Interact — talk to people, use things |
+| Z / Enter | Confirm (✓) · also works to talk and attack |
 | Space | Dash (dodges attacks!) |
-| X / Esc | Back (✕) |
+| X / Esc | Back (✕) · sachet burst in the Five Poisons fight |
 | J | Open the Wisdom Scroll Journal |
 | M | Mute / unmute all sound |
+
+Every minigame and boss fight opens with a **briefing card** that explains the
+real tradition behind it, lists the numbered steps you are about to do, and
+shows the controls — nothing starts until you press **GOT IT**.
 
 The game **saves automatically** — you can close it and press CONTINUE later.
 
@@ -37,6 +43,21 @@ The game **saves automatically** — you can close it and press CONTINUE later.
 | 1 — The Night of Nian | Lunar New Year (春节) | The legend of the Nian monster — fought as a real 3-phase arena boss (dash past its pounces, ember rain and shockwaves while pelting it with Mei's dumplings, echoing the old custom of leaving food out so Nian would fill its belly instead); why red, lanterns & firecrackers; sweeping before New Year (a chase-and-sweep boss fight against Huì Qì 晦气, the Dust King — “bad luck” itself); upside-down 福; lucky foods (dumplings, fish); red envelopes; the 15 days to the Lantern Festival |
 | 2 — The River Remembers | Dragon Boat Festival (端午节) | The true story of the poet Qu Yuan (c. 300 BC); why dragon boats race; zongzi; mugwort & the "five poisons"; UNESCO world heritage (2009) |
 | 3 — The Roundest Moon | Mid-Autumn Festival (中秋节) | The legend of Chang'e and the Jade Rabbit; mooncakes & family reunion; Tang/Song dynasty history; lantern riddles |
+
+## The ten games
+
+| Game | What you actually do |
+|---|---|
+| **Out with the Old Luck** | Herd six dust sprites out the front door with a broom that sweeps toward your cursor, then fight Huì Qì 晦气, the Dust King |
+| **Uncle Bo's Door** | Write the character 福 stroke by stroke, hang the couplets level, then decide which way up 福 goes |
+| **Dumpling Kitchen** | Roll the wrapper flat, spoon the filling to the line, crimp each pleat as the finger passes it — three dumplings, getting faster |
+| **Nian at the Gates** | A three-phase arena boss: dash through ember rain and shockwaves, throw dumplings at the cursor, pop the cubs it summons |
+| **Zongzi Wrap-off** | Fold the leaf to the marked cone angle, pour rice to the fill line, tie the string on the beat |
+| **The Five Poisons** | Swing a mugwort bundle at snake, scorpion, centipede, toad and spider through three waves, then the Wǔ Dú King |
+| **Dragon Boat Race** | One stroke per drum beat, alternating sides — steer between three lanes around rocks, logs and whirlpools |
+| **Mooncake Bakery** | Press every wedge of dough even, fill with lotus paste, seat the salted yolk dead centre, line up and stamp the mould, then pull the tray at GOLDEN |
+| **Lóng's Story Check** | Quiz — click your answer; a wrong one gets crossed out, and letting the lantern timer run down makes Lóng burn away a wrong option as a free hint |
+| **Lantern Riddles** | Four real Mid-Autumn riddles; every one you get first try builds a streak, and each right answer sends a lantern up over the village |
 
 There are **16 collectible Wisdom Scrolls** — every one is a researched,
 paraphrased fact. The in-game **Journal** collects them, and the Journal's

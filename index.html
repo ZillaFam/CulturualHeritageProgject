@@ -20,7 +20,7 @@
     image-rendering:pixelated;
     image-rendering:crisp-edges;
     background:#0c0a14;
-    cursor:pointer;
+    cursor:none;
   }
   /* touch controls */
   #touch { position:fixed; inset:0; pointer-events:none; display:none; z-index:5; }
@@ -127,7 +127,7 @@ const KEYMAP = {
   ArrowLeft:'left', KeyA:'left', ArrowRight:'right', KeyD:'right',
   KeyZ:'a', Enter:'a', Space:'dash',
   KeyX:'b', Escape:'b',
-  KeyJ:'journal', KeyM:'mute'
+  KeyE:'interact', KeyJ:'journal', KeyM:'mute'
 };
 window.addEventListener('keydown', e=>{
   const k = KEYMAP[e.code];
@@ -153,14 +153,61 @@ bindBtn('t-up','up'); bindBtn('t-down','down'); bindBtn('t-left','left');
 bindBtn('t-right','right'); bindBtn('t-a','a'); bindBtn('t-b','b'); bindBtn('t-j','journal');
 window.addEventListener('touchstart', ()=> document.body.classList.add('touchmode'), {passive:true});
 
-/* taps on the canvas act as "A" and report a logical position */
+/* ---------- mouse / pointer ---------- */
+const mouse = { x: LW/2, y: LH/2, over:false, down:false };
 let tapPos = null;
+function toLogical(e){
+  const r = cv.getBoundingClientRect();
+  return { x:(e.clientX-r.left)/r.width*LW, y:(e.clientY-r.top)/r.height*LH };
+}
+cv.addEventListener('pointermove', e=>{
+  const q = toLogical(e); mouse.x = q.x; mouse.y = q.y; mouse.over = true;
+});
+cv.addEventListener('pointerleave', ()=>{ mouse.over = false; mouse.down = false; });
 cv.addEventListener('pointerdown', e=>{
   audioUnlock();
-  const r = cv.getBoundingClientRect();
-  tapPos = { x:(e.clientX-r.left)/r.width*LW, y:(e.clientY-r.top)/r.height*LH };
-  just.a = true;
+  const q = toLogical(e);
+  mouse.x = q.x; mouse.y = q.y; mouse.over = true; mouse.down = true;
+  tapPos = q; just.click = true;
 });
+window.addEventListener('pointerup', ()=>{ mouse.down = false; });
+/* was this click inside a rect? (logical px) */
+function clickIn(x, y, w, h){
+  return just.click && mouse.x >= x && mouse.x <= x+w && mouse.y >= y && mouse.y <= y+h;
+}
+function hoverIn(x, y, w, h){
+  return mouse.over && mouse.x >= x && mouse.x <= x+w && mouse.y >= y && mouse.y <= y+h;
+}
+/* angle from the player's chest to the cursor — used for aimed attacks */
+function aimAngle(px, py){ return Math.atan2(mouse.y - py, mouse.x - px); }
+function drawCursor(){
+  if (!mouse.over) return;
+  const s = topScene();
+  const x = Math.round(mouse.x), y = Math.round(mouse.y);
+  if (s && s.aim){
+    const t = G.time;
+    const g = mouse.down ? '#ffe9b0' : '#f2b632';
+    for (const d of [-1, 1]){
+      R(x + d*3, y-0.5, d*4, 1.4, '#2b1a26');
+      R(x-0.5, y + d*3, 1.4, d*4, '#2b1a26');
+      R(x + d*3.4, y, d*3, 1, g);
+      R(x, y + d*3.4, 1, d*3, g);
+    }
+    circle(x, y, 1.4, '#2b1a26'); circle(x, y, 0.8, g);
+    const r = 7 + Math.sin(t*4)*0.8;
+    for (let i=0;i<4;i++){
+      const a = i/4*Math.PI*2 + t*1.4;
+      R(x+Math.cos(a)*r, y+Math.sin(a)*r, 1.4, 1.4, g);
+    }
+  } else {
+    // pixel arrow
+    for (let i=0;i<8;i++) R(x, y+i, 1+ (i<6?1:0), 1, '#2b1a26');
+    R(x+1, y+1, 1, 6, '#f6f2e6'); R(x+2, y+3, 1, 3, '#f6f2e6');
+    R(x+2, y+6, 3, 1, '#2b1a26'); R(x+3, y+7, 1, 2, '#2b1a26');
+    R(x+1, y+7, 1, 1, '#f6f2e6');
+    if (mouse.down) circle(x+2, y+4, 4, 'rgba(242,182,50,0.25)');
+  }
+}
 
 /* ---------- text helpers ---------- */
 const FONT = '"Courier New", monospace';
@@ -335,6 +382,7 @@ function frame(now){
     let start = stack.length-1;
     while (start>0 && stack[start].overlay) start--;
     for (let i=start;i<stack.length;i++) if (stack[i].render) stack[i].render();
+    drawCursor();
   }
   for (const k in just) just[k] = false;
   tapPos = null;
@@ -1587,6 +1635,36 @@ function drawNian(x, y, t){
   }
   R(cxx-7, cyy+10.2, 14, 0.9, '#143c16');
 }
+
+/* ---------- Nian cub: the little ones Nian calls up ---------- */
+function drawNianCub(x, y, t, hurt){
+  const bob = Math.sin(t*7 + x)*1.2;
+  const yy = y + bob;
+  ell(x, y+5, 8, 2.4, 'rgba(0,0,0,0.28)');
+  // stubby legs
+  R(x-6, yy+1, 4, 4, INK); R(x+2, yy+1, 4, 4, INK);
+  R(x-5.4, yy+1.4, 2.8, 3.2, '#2a6620'); R(x+2.6, yy+1.4, 2.8, 3.2, '#2a6620');
+  R(x-6, yy+4.6, 4.4, 1.4, '#ede0bc'); R(x+2, yy+4.6, 4.4, 1.4, '#ede0bc');
+  // body
+  circle(x, yy-2, 7.4, INK); circle(x, yy-2, 6.6, '#48962c');
+  circle(x-1.6, yy-3.6, 3.4, '#7cc93e');
+  // back spikes
+  for (let i=0;i<3;i++){
+    const sx = x-4+i*4;
+    tri(sx-2, yy-7.4, sx, yy-12-((i%2)*2), sx+2, yy-7.4, INK);
+    tri(sx-1.3, yy-7.6, sx, yy-11-((i%2)*2), sx+1.3, yy-7.6, i%2?'#2a6620':'#7cc93e');
+  }
+  // tiny gold horns
+  R(x-6.4, yy-11, 2.6, 3, INK); R(x-5.9, yy-10.6, 1.6, 2.2, '#f2b632');
+  R(x+3.8, yy-11, 2.6, 3, INK); R(x+4.3, yy-10.6, 1.6, 2.2, '#f2b632');
+  // face
+  R(x-5, yy-5.4, 10, 2, INK);
+  R(x-4, yy-3.4, 3.4, 2, '#ff3820'); R(x+0.6, yy-3.4, 3.4, 2, '#ff3820');
+  glow(x-2.4, yy-2.6, 4, '#ff5030', 0.35); glow(x+2.4, yy-2.6, 4, '#ff5030', 0.35);
+  R(x-3, yy-0.4, 6, 2, INK);
+  R(x-2.4, yy-0.4, 1.4, 1.4, '#f8f4ec'); R(x+1, yy-0.4, 1.4, 1.4, '#f8f4ec');
+  if (hurt) glow(x, yy-2, 14, '#ffffff', 0.4);
+}
 /* ============================================================
    VILLAGE — buildings & trees at hero-sprite quality
    (overrides the simple versions in p3)
@@ -2233,7 +2311,7 @@ const OBJECTIVES = {
   2: [ 'Talk to Captain Yu at the dock',
        'Ask Old Wen about the poet (west shrine)',
        'Wrap zongzi with Granny Zhu',
-       'Gather 3 mugwort sprigs by the river',
+       'Gather mugwort by the river…',
        'Bring the herbs to Granny Zhu',
        'Race the dragon boat with Captain Yu!',
        'Talk to Lóng the dragon' ],
@@ -2314,7 +2392,7 @@ function dlgNext(){
   DLG.line = e; DLG.chars = 0; DLG.blipT = 0; DLG.blipI = 0;
 }
 function dlgUpdate(dt){
-  if (just.dash) just.a = true;      // SPACE also advances dialogue
+  if (just.dash || just.click) just.a = true;   // SPACE / a click also advance dialogue
   if (DLG.choice){
     const n = DLG.choice.choice.length;
     if (just.up)   { DLG.sel = (DLG.sel+n-1)%n; SFX.blip(); }
@@ -2585,7 +2663,7 @@ const world = {
     }
     // interact
     const it = this.nearInteract();
-    if (it && just.a){ SFX.select(); it.talk(); }
+    if (it && (just.interact || just.a || just.click)){ SFX.select(); it.talk(); }
     chapterTick(dt);
   },
   followLong(dt){
@@ -2680,7 +2758,7 @@ const world = {
     // interact prompt
     const it = DLG.active ? null : this.nearInteract();
     if (it){
-      const label = '✓ ' + (it.label||'Talk');
+      const label = 'E · ' + (it.label||'Talk');
       const w = textW(label,5.4)+10;
       box(LW/2-w/2, 118, w, 11, {bg:'rgba(20,12,16,0.85)', border:'#c8a860'});
       T(label, LW/2, 120, 5.4, '#ffd964', 'center');
@@ -3130,10 +3208,9 @@ function drawDustKing(x, y, t, hurtT){
   // stubby arms
   R(x-R0-3, y+bob+2, 4, 2.4, '#6b665e'); R(x+R0-1, y+bob+2, 4, 2.4, '#6b665e');
 }
-function drawBroom(x, y, dir, k){
-  // k: 0..1 through the sweep arc
-  const a = (dir==='left' ? Math.PI : dir==='right' ? 0 : dir==='up' ? -Math.PI/2 : Math.PI/2)
-          + lerp(-0.8, 0.8, k) * (dir==='up'||dir==='down' ? -1 : 1);
+function drawBroom(x, y, aim, k){
+  // aim: radians toward the cursor. k: 0..1 through the sweep arc
+  const a = aim + lerp(-0.85, 0.85, k);
   const hx = x + Math.cos(a)*7, hy = y + Math.sin(a)*7;
   const tx = x + Math.cos(a)*17, ty = y + Math.sin(a)*17;
   cx.strokeStyle = '#8a6a48'; cx.lineWidth = P*1.6;
@@ -3179,7 +3256,7 @@ function makeSweepBattle(onDone){
   spawnWave(6);
 
   return {
-    usesDash:true,
+    usesDash:true, aim:true,
     update(dt){
       st.t+=dt; st.evT+=dt;
       st.msgT=Math.max(0,st.msgT-dt); st.shake=Math.max(0,st.shake-dt);
@@ -3219,11 +3296,13 @@ function makeSweepBattle(onDone){
       if (st.dashT>0) spawnPart({x:st.px, y:st.py-8, vx:0, vy:0, g:0, life:0.22, t:0, c:playerLook().top||'#e8b028', sz:3});
 
       /* ---- sweep ---- */
-      if (just.a && st.sweepCd<=0){
-        st.sweepT=0.26; st.sweepCd=0.34; st.sweepDir=st.dir; sweepWhoosh();
-        const ax = st.dir==='left'?-1: st.dir==='right'?1:0;
-        const ay = st.dir==='up'?-1: st.dir==='down'?1:0;
-        const cx0 = st.px + ax*12, cy0 = st.py - 8 + ay*12;
+      if ((just.a || just.click) && st.sweepCd<=0){
+        st.sweepT=0.26; st.sweepCd=0.34; sweepWhoosh();
+        st.aimA = mouse.over ? aimAngle(st.px, st.py-8)
+                : (st.dir==='left'?Math.PI: st.dir==='right'?0: st.dir==='up'?-Math.PI/2:Math.PI/2);
+        const ax = Math.cos(st.aimA), ay = Math.sin(st.aimA);
+        if (Math.abs(ax) > Math.abs(ay)) st.dir = ax<0?'left':'right'; else st.dir = ay<0?'up':'down';
+        const cx0 = st.px + ax*13, cy0 = st.py - 8 + ay*13;
         for (const d of st.dusts){
           if (dist(d.x, d.y, cx0, cy0) < 21){
             const a = Math.atan2(d.y - st.py + 8, d.x - st.px);
@@ -3365,7 +3444,7 @@ function makeSweepBattle(onDone){
       for (const pf of st.puffs) items.push({y:pf.y, f:()=>{ circle(pf.x, pf.y, 3.4, '#8f8880'); circle(pf.x-1, pf.y-1, 1.6, '#c4bcb0'); }});
       items.push({y:st.py+1, f:()=>{
         drawPerson(st.px, st.py, {...playerLook(), dir:st.dir, walk:st.moving||st.dashT>0}, st.t);
-        if (st.sweepT>0) drawBroom(st.px, st.py-9, st.sweepDir, 1-st.sweepT/0.26);
+        if (st.sweepT>0) drawBroom(st.px, st.py-9, st.aimA||0, 1-st.sweepT/0.26);
         else { // broom at rest
           const ax = st.dir==='left'?-1:1;
           R(st.px+ax*7, st.py-16, 1.6, 15, '#8a6a48');
@@ -3402,7 +3481,7 @@ function makeSweepBattle(onDone){
         box(26, 60, 268, 52);
         T('OUT WITH THE OLD LUCK!', LW/2, 66, 8, '#f2b632','center');
         T('Sweep every dust bunny out the door before the new year.', LW/2, 80, 5.6, '#f4e8d0','center');
-        T('◀▶▲▼ move · ✓ SWEEP · SPACE dash', LW/2, 92, 5.6, '#ffe9b0','center');
+        T('ARROWS move · CLICK to sweep at the cursor · SPACE dash', LW/2, 92, 5.6, '#ffe9b0','center');
         T('(and do NOT let them touch you)', LW/2, 102, 5, '#cfc0a8','center');
       } else if (st.mode==='lose'){
         box(40, 62, 240, 50);
@@ -3417,6 +3496,1452 @@ function makeSweepBattle(onDone){
         T('✓', LW/2, 100, 6, '#cfc0a8','center');
       }
       if (st.msgT>0 && st.mode!=='win') T(st.msg, LW/2, 120, 6.6, st.msgC, 'center');
+    }
+  };
+}
+/* ============================================================
+   KITCHEN GAMES — dumplings (jiǎozi) and zongzi
+   Both run three real steps with a visible step tracker.
+   ============================================================ */
+
+function stepTracker(steps, cur, accent){
+  const n = steps.length;
+  const w = 84, x0 = LW/2 - (n*w)/2;
+  for (let i=0;i<n;i++){
+    const x = x0 + i*w, on = i===cur, done = i<cur;
+    R(x+4, 28, w-8, 13, on ? 'rgba(242,182,50,0.22)' : 'rgba(20,12,16,0.7)');
+    R(x+4, 28, w-8, 1, on ? accent : '#4a3a3e');
+    circle(x+13, 34.5, 4.6, done ? '#7ce87c' : on ? accent : '#4a3a3e');
+    T(done ? '✓' : String(i+1), x+13, 31.4, 5.4, '#2b1a26', 'center');
+    T(steps[i], x+22, 31.4, 5.4, on ? '#ffe9b0' : done ? '#7ce87c' : '#7a6c60');
+  }
+}
+function gradeOf(score){
+  return score >= 0.85 ? ['PERFECT!', '#7ce87c'] :
+         score >= 0.6  ? ['GOOD',     '#ffe9b0'] :
+                         ['LUMPY…',   '#ff8a70'];
+}
+function kitchenRoom(t, warm){
+  R(0,0,LW,LH,'#4a3626');
+  for (let i=0;i<LW;i+=24) R(i,0,1,LH,'rgba(0,0,0,0.14)');
+  R(0,44,LW,10,'#6a4c34'); R(0,44,LW,2,'#8a6444');
+  R(0,120,LW,60,'#8a6844');                       // work table
+  R(0,120,LW,3,'#a88054');
+  for (let i=0;i<LW;i+=26) R(i,123,1,57,'rgba(0,0,0,0.10)');
+  // steamer + steam
+  R(20, 104, 38, 22, '#8a7458'); R(20, 104, 38, 2, '#a8926e');
+  circle(39, 106, 16, '#a8926e'); circle(39, 106, 13, '#c8b696'); circle(39, 106, 10, '#e0d2b0');
+  for (let i=0;i<6;i++) R(26+i*5, 96, 2, 8, '#b09a76');
+  for (let i=0;i<3;i++){
+    const yy = 92 - ((t*13 + i*9) % 28);
+    cx.globalAlpha = clamp(1-(92-yy)/28, 0, 0.45);
+    circle(36 + Math.sin(t*2+i)*4, yy, 3.4, '#f4f0e4');
+    cx.globalAlpha = 1;
+  }
+  drawLantern(300, 62, 0.9, true, t);
+  if (warm) glow(160, 120, 90, '#ffb050', 0.06);
+}
+
+/* ============================================================
+   DUMPLINGS — roll the wrapper, spoon the filling, pleat the edge
+   ============================================================ */
+function makeDumplingGame(onDone){
+  const st = {
+    idx:0, total:3, stage:0, t:0, evT:0, done:false,
+    zones:[1,1,1,1,1], pin:160, pinDir:1, lastPin:160,
+    fill:0, filling:false, fillLocked:-1,
+    pleats:[], crimp:0, crimpDir:1,
+    scores:[], stageScore:[],
+    msg:'', msgT:0, msgC:'#ffe9b0', shake:0, flash:0,
+  };
+  window.DUMP = st;
+  const STEPS = ['ROLL', 'FILL', 'PLEAT'];
+  function say2(m,c){ st.msg=m; st.msgT=1.1; st.msgC=c||'#ffe9b0'; }
+  function resetDumpling(){
+    st.zones=[1,1,1,1,1]; st.pin=160; st.fill=0; st.filling=false; st.fillLocked=-1;
+    st.crimp=0; st.crimpDir=1; st.stageScore=[];
+    const n = 5;
+    st.pleats = [];
+    for (let i=0;i<n;i++) st.pleats.push({ a: -1.3 + i*(2.6/(n-1)), hit:false });
+    st.stage = 0;
+  }
+  resetDumpling();
+  const speedUp = ()=> 1 + st.idx*0.35;
+
+  return {
+    aim:false,
+    update(dt){
+      st.t += dt; st.evT += dt;
+      st.msgT = Math.max(0, st.msgT-dt);
+      st.shake = Math.max(0, st.shake-dt);
+      st.flash = Math.max(0, st.flash-dt);
+      updateParts(dt);
+      if (st.done){
+        if (st.evT > 2.2 || ((just.a||just.click) && st.evT > 0.8)){ popScene(); onDone(); }
+        return;
+      }
+
+      /* ---- 1. ROLL ---- */
+      if (st.stage===0){
+        st.lastPin = st.pin;
+        if (keys.left)  st.pin -= 108*dt;
+        if (keys.right) st.pin += 108*dt;
+        st.pin = clamp(st.pin, 126, 194);
+        const moved = Math.abs(st.pin - st.lastPin);
+        if (moved > 0.05){
+          const zi = clamp(Math.floor((st.pin-126)/13.6), 0, 4);
+          st.zones[zi] = Math.max(-0.35, st.zones[zi] - moved*0.055);
+          if (Math.random()<0.25) spawnPart({x:st.pin+rnd(-8,8), y:96+rnd(-4,4), vx:0, vy:-rnd(4,14), g:0, life:0.4, t:0, c:'#f6ecd8', sz:1.4});
+        }
+        const ok = st.zones.every(z=> z<=0.28 && z>=-0.2);
+        const anyTorn = st.zones.some(z=> z < -0.2);
+        if (ok || anyTorn){
+          const acc = anyTorn ? 0.45 : 1;
+          st.stageScore.push(acc);
+          st.stage = 1; st.evT = 0;
+          say2(anyTorn ? 'A bit thin — keep going!' : 'Even and round!', anyTorn ? '#ff8a70' : '#7ce87c');
+          SFX.good();
+        }
+      }
+      /* ---- 2. FILL ---- */
+      else if (st.stage===1){
+        const held = keys.a || mouse.down;
+        if (held){ st.filling = true; st.fill += (0.42*speedUp())*dt; }
+        else if (st.filling){
+          st.filling = false;
+          const f = st.fill;
+          // sweet spot 0.55 .. 0.8
+          let acc = 0;
+          if (f >= 0.55 && f <= 0.82){ acc = 1; say2('Just right!', '#7ce87c'); SFX.good(); }
+          else if (f > 0.82){ acc = 0.35; say2('Too much — it will burst!', '#ff8a70'); SFX.bad(); st.shake=0.3; }
+          else { acc = 0.5; say2('A little empty…', '#ffd0a0'); }
+          st.fillLocked = f;
+          st.stageScore.push(acc);
+          st.stage = 2; st.evT = 0;
+        }
+        if (st.fill > 1.25){ st.filling=false; st.fillLocked=st.fill; st.stageScore.push(0.25);
+          say2('It overflowed!', '#ff8a70'); SFX.bad(); st.stage=2; st.evT=0; }
+      }
+      /* ---- 3. PLEAT ---- */
+      else if (st.stage===2){
+        st.crimp += st.crimpDir * dt * (0.95*speedUp());
+        if (st.crimp > 1){ st.crimp = 1; st.crimpDir = -1; }
+        if (st.crimp < 0){ st.crimp = 0; st.crimpDir = 1; }
+        if (just.a || just.click){
+          const ca = -1.55 + st.crimp*3.1;
+          let best = null, bd = 99;
+          for (const p of st.pleats){ if (p.hit) continue;
+            const d = Math.abs(p.a - ca); if (d < bd){ bd = d; best = p; } }
+          if (best && bd < 0.3){
+            best.hit = true; SFX.blip();
+            const px2 = 160 + Math.sin(best.a)*26, py2 = 96 - Math.cos(best.a)*20;
+            burst(px2, py2, ['#f6ecd8','#e8d8b8'], 6, 26);
+            if (st.pleats.every(p=>p.hit)){
+              st.stageScore.push(1);
+              finishDumpling();
+            }
+          } else { SFX.bad(); st.shake = 0.2; say2('Missed the fold!', '#ff8a70'); st.misses = (st.misses||0)+1; }
+        }
+        if (st.evT > 15){                                 // don't stall forever
+          const hits = st.pleats.filter(p=>p.hit).length;
+          st.stageScore.push(hits/st.pleats.length);
+          finishDumpling();
+        }
+      }
+      function finishDumpling(){
+        const acc = st.stageScore.reduce((a,b)=>a+b,0)/st.stageScore.length;
+        st.scores.push(acc);
+        const [g,c] = gradeOf(acc);
+        say2(g, c); SFX.win(); st.flash = 0.4;
+        burst(160, 96, ['#f2b632','#ffe98a','#f6ecd8'], 26, 60);
+        st.idx++;
+        if (st.idx >= st.total){ st.done = true; st.evT = 0; }
+        else { resetDumpling(); st.evT = 0; }
+      }
+    },
+
+    render(){
+      const shx = st.shake>0 ? Math.round(Math.sin(st.t*60)*2) : 0;
+      cx.save(); cx.translate(shx*P, 0);
+      kitchenRoom(st.t, true);
+      // finished dumplings on the tray
+      R(206, 128, 92, 22, '#6a4c30'); R(206, 128, 92, 2, '#8a6444');
+      st.scores.forEach((sc,i)=>{
+        const [,c] = gradeOf(sc);
+        drawDumpling(220+i*26, 140, 1.2);
+        R(214+i*26, 146, 12, 1.6, c);
+      });
+      // the board + wrapper
+      R(118, 78, 84, 46, '#c8a878'); R(118, 78, 84, 2, '#e0c898');
+      const flat = 1 - (st.zones.reduce((a,b)=>a+b,0)/5);
+      const rw = 20 + flat*10;
+      if (st.stage===0){
+        ell(160, 96, rw, rw*0.62, '#e8d8b8');
+        ell(160, 95, rw-2, rw*0.55, '#f6ecd8');
+        // thickness bars
+        for (let i=0;i<5;i++){
+          const z = st.zones[i], x = 130+i*13.6;
+          const good = z<=0.28 && z>=-0.2, torn = z<-0.2;
+          R(x, 112, 11, 7, 'rgba(20,12,16,0.7)');
+          R(x+1, 113, 9*clamp(1-Math.max(z,0),0,1), 5, torn ? '#ff8a70' : good ? '#7ce87c' : '#c8a860');
+        }
+        // rolling pin
+        R(st.pin-15, 84, 30, 6, '#8a6a48');
+        R(st.pin-15, 84, 30, 2, '#a88054');
+        R(st.pin-19, 85.5, 5, 3, '#6a4a34'); R(st.pin+14, 85.5, 5, 3, '#6a4a34');
+      } else {
+        ell(160, 96, 22, 14, '#e8d8b8');
+        ell(160, 95, 20, 12, '#f6ecd8');
+      }
+      // filling
+      if (st.stage>=1){
+        const f = st.stage===1 ? st.fill : st.fillLocked;
+        const m = clamp(f, 0, 1.1);
+        if (m > 0.02){
+          ell(160, 95, 5+m*10, 3+m*6, '#b06a3a');
+          ell(159, 93, 3+m*7, 2+m*4, '#c88a5a');
+          R(157, 92, 3, 1.4, '#8ab04c');
+        }
+      }
+      if (st.stage===1){
+        // fill gauge with the sweet spot marked
+        R(108, 132, 104, 10, 'rgba(20,12,16,0.8)');
+        R(108+0.55*104, 132, (0.82-0.55)*104, 10, 'rgba(124,232,124,0.35)');
+        R(108, 132, 104*clamp(st.fill,0,1.2), 10, st.fill>0.82 ? '#ff8a70' : '#f2b632');
+        R(108, 132, 104, 1, '#6a5a48'); R(108, 141, 104, 1, '#6a5a48');
+        T('HOLD to spoon it in — let go inside the green', 160, 146, 5.2, '#cfc0a8', 'center');
+      }
+      // pleats
+      if (st.stage===2){
+        for (const p of st.pleats){
+          const px2 = 160 + Math.sin(p.a)*30, py2 = 92 - Math.cos(p.a)*19;
+          if (p.hit){
+            R(px2-2.4, py2-5, 4.8, 9, '#c8b89a');
+            R(px2-1.8, py2-4.4, 3.6, 8, '#f6ecd8');
+            R(px2-1.8, py2-4.4, 3.6, 2, '#ffffff');
+          } else {
+            circle(px2, py2, 5, 'rgba(242,182,50,0.28)');
+            circle(px2, py2, 3.4, '#8a6a3a'); circle(px2, py2, 2.4, '#f2b632');
+          }
+        }
+        const ca = -1.55 + st.crimp*3.1;
+        const cxp = 160 + Math.sin(ca)*30, cyp = 92 - Math.cos(ca)*19;
+        glow(cxp, cyp, 11, '#ffe9b0', 0.3);
+        R(cxp-4, cyp-13, 8, 11, '#a8845a'); R(cxp-3, cyp-12, 6, 9, '#f0d898');
+        R(cxp-3, cyp-12, 6, 2, '#fff6e2');
+        R(cxp-1.4, cyp-2.4, 3, 4, '#8a6a48');
+        T('CLICK on each fold as the fingers pass', 160, 146, 5.2, '#cfc0a8', 'center');
+      }
+      if (st.stage===0) T('◀ ▶ roll the pin until every bar is green', 160, 146, 5.2, '#cfc0a8', 'center');
+      drawParts(0,0);
+      if (st.flash>0){ cx.globalAlpha = st.flash*0.5; R(0,0,LW,LH,'#ffe9b0'); cx.globalAlpha = 1; }
+      cx.restore();
+
+      mgHeader('DUMPLING KITCHEN', 'fold them like little gold ingots');
+      stepTracker(STEPS, st.stage, '#f2b632');
+      T('DUMPLING '+Math.min(st.idx+1, st.total)+' / '+st.total, 160, 44, 5.4, '#cfc0a8', 'center');
+      if (st.msgT>0 && !st.done) T(st.msg, 160, 54, 6.6, st.msgC, 'center');
+      if (st.done){
+        const avg = st.scores.reduce((a,b)=>a+b,0)/st.scores.length;
+        const [g,c] = gradeOf(avg);
+        box(46, 58, 228, 52);
+        T(g, LW/2, 64, 9, c, 'center');
+        T('A whole steamer of golden-ingot dumplings!', LW/2, 80, 5.6, '#f4e8d0', 'center');
+        T('✓', LW/2, 94, 6, '#cfc0a8', 'center');
+      }
+    }
+  };
+}
+
+/* ============================================================
+   ZONGZI — fold the leaf, pour the rice, tie the string
+   ============================================================ */
+function makeZongziGame(onDone){
+  const st = {
+    idx:0, total:3, stage:0, t:0, evT:0, done:false,
+    fold:0, target:0, rice:0, pouring:false, riceLocked:-1,
+    wraps:[], wrapPos:0, wrapDir:1,
+    scores:[], stageScore:[],
+    msg:'', msgT:0, msgC:'#ffe9b0', shake:0, flash:0,
+  };
+  window.ZONG = st;
+  const STEPS = ['FOLD', 'FILL', 'TIE'];
+  function say2(m,c){ st.msg=m; st.msgT=1.1; st.msgC=c||'#ffe9b0'; }
+  function reset(){
+    st.fold = 0; st.target = rnd(0.35, 0.8); st.rice = 0; st.pouring=false; st.riceLocked=-1;
+    st.wrapPos = 0; st.wrapDir = 1; st.stageScore = [];
+    st.wraps = [0.22, 0.45, 0.68, 0.88].map(p=>({p, hit:false}));
+    st.stage = 0;
+  }
+  reset();
+  const speedUp = ()=> 1 + st.idx*0.3;
+
+  return {
+    aim:false,
+    update(dt){
+      st.t += dt; st.evT += dt;
+      st.msgT = Math.max(0, st.msgT-dt);
+      st.shake = Math.max(0, st.shake-dt);
+      st.flash = Math.max(0, st.flash-dt);
+      updateParts(dt);
+      if (st.done){
+        if (st.evT > 2.2 || ((just.a||just.click) && st.evT > 0.8)){ popScene(); onDone(); }
+        return;
+      }
+      /* 1. FOLD the leaf into a cone */
+      if (st.stage===0){
+        if (keys.left)  st.fold -= 0.55*dt;
+        if (keys.right) st.fold += 0.55*dt;
+        st.fold = clamp(st.fold, 0, 1);
+        if (just.a || just.click){
+          const off = Math.abs(st.fold - st.target);
+          const acc = off < 0.05 ? 1 : off < 0.12 ? 0.7 : 0.4;
+          st.stageScore.push(acc);
+          say2(off<0.05 ? 'A perfect cone!' : off<0.12 ? 'Close enough.' : 'Loose — rice will leak!',
+               off<0.05 ? '#7ce87c' : off<0.12 ? '#ffe9b0' : '#ff8a70');
+          if (off<0.12) SFX.good(); else SFX.bad();
+          st.stage = 1; st.evT = 0;
+        }
+      }
+      /* 2. POUR the rice */
+      else if (st.stage===1){
+        const held = keys.a || mouse.down;
+        if (held){ st.pouring = true; st.rice += (0.4*speedUp())*dt;
+          if (Math.random()<0.6) spawnPart({x:160+rnd(-5,5), y:74, vx:rnd(-6,6), vy:rnd(30,50), g:60, life:0.5, t:0, c:'#f6ecd8', sz:1.4}); }
+        else if (st.pouring){
+          st.pouring = false;
+          const f = st.rice;
+          let acc = (f >= 0.6 && f <= 0.86) ? 1 : f > 0.86 ? 0.35 : 0.55;
+          say2(acc===1 ? 'Filled to the line!' : f>0.86 ? 'Overfilled — it will split!' : 'Under-filled.',
+               acc===1 ? '#7ce87c' : '#ff8a70');
+          if (acc===1) SFX.good(); else { SFX.bad(); st.shake=0.25; }
+          st.riceLocked = f; st.stageScore.push(acc);
+          st.stage = 2; st.evT = 0;
+        }
+        if (st.rice > 1.15){ st.pouring=false; st.riceLocked=st.rice; st.stageScore.push(0.25);
+          say2('It spilled everywhere!', '#ff8a70'); SFX.bad(); st.stage=2; st.evT=0; }
+      }
+      /* 3. TIE the string */
+      else if (st.stage===2){
+        st.wrapPos += st.wrapDir * dt * (0.85*speedUp());
+        if (st.wrapPos > 1){ st.wrapPos = 1; st.wrapDir = -1; }
+        if (st.wrapPos < 0){ st.wrapPos = 0; st.wrapDir = 1; }
+        if (just.a || just.click){
+          let best=null, bd=99;
+          for (const w of st.wraps){ if (w.hit) continue;
+            const d = Math.abs(w.p - st.wrapPos); if (d<bd){ bd=d; best=w; } }
+          if (best && bd < 0.075){
+            best.hit = true; SFX.blip();
+            burst(160, 72 + best.p*34, ['#e8d8b8','#f6ecd8'], 6, 24);
+            if (st.wraps.every(w=>w.hit)){ st.stageScore.push(1); finish(); }
+          } else { SFX.bad(); st.shake=0.2; say2('The string slipped!', '#ff8a70'); }
+        }
+        if (st.evT > 15){
+          const hits = st.wraps.filter(w=>w.hit).length;
+          st.stageScore.push(hits/st.wraps.length); finish();
+        }
+      }
+      function finish(){
+        const acc = st.stageScore.reduce((a,b)=>a+b,0)/st.stageScore.length;
+        st.scores.push(acc);
+        const [g,c] = gradeOf(acc);
+        say2(g, c); SFX.win(); st.flash = 0.4;
+        burst(160, 86, ['#3e8b4e','#7ce87c','#e8d8b8'], 24, 60);
+        st.idx++;
+        if (st.idx >= st.total){ st.done = true; st.evT = 0; }
+        else { reset(); st.evT = 0; }
+      }
+    },
+
+    render(){
+      const shx = st.shake>0 ? Math.round(Math.sin(st.t*60)*2) : 0;
+      cx.save(); cx.translate(shx*P, 0);
+      kitchenRoom(st.t, false);
+      // a bowl of soaked rice and a stack of leaves
+      circle(40, 138, 15, '#9a8a6a'); circle(40, 138, 12, '#f2ecd8');
+      for (let i=0;i<5;i++) R(268+i*3, 128+i, 26, 4, i%2?'#2e7a3e':'#3f9450');
+      // finished zongzi
+      st.scores.forEach((sc,i)=>{
+        const [,c] = gradeOf(sc);
+        drawZongzi(216+i*26, 140, 1.3);
+        R(210+i*26, 150, 12, 1.6, c);
+      });
+      /* the leaf cone */
+      const f = st.fold;
+      const spread = lerp(30, 8, f);
+      const cxp = 160, cyp = 74;
+      tri(cxp-spread, cyp, cxp+spread, cyp, cxp, cyp+40, '#1a3a1e');
+      tri(cxp-spread+2, cyp+2, cxp+spread-2, cyp+2, cxp, cyp+37, '#2e7a3e');
+      tri(cxp-spread+4, cyp+3, cxp-2, cyp+3, cxp-2, cyp+28, '#3f9450');
+      R(cxp-spread, cyp-1, spread*2, 2, '#54ad63');
+      if (st.stage===0){
+        // ghost target cone
+        const ts = lerp(30, 8, st.target);
+        cx.globalAlpha = 0.35 + Math.sin(st.t*4)*0.12;
+        tri(cxp-ts, cyp, cxp+ts, cyp, cxp, cyp+40, '#f2b632');
+        cx.globalAlpha = 1;
+        T('◀ ▶ fold to match the golden outline, then ✓', 160, 146, 5.2, '#cfc0a8', 'center');
+      }
+      // rice inside
+      if (st.stage>=1){
+        const m = clamp(st.stage===1 ? st.rice : st.riceLocked, 0, 1.1);
+        if (m>0.02){
+          const top = cyp + 36 - m*30;
+          tri(cxp-spread*0.8, top, cxp+spread*0.8, top, cxp, cyp+36, '#f6ecd8');
+          R(cxp-spread*0.5, top, spread, 1.4, '#e8dcc0');
+          if (m > 0.4){ R(cxp-3, top+6, 6, 4, '#b06a3a'); }
+        }
+      }
+      if (st.stage===1){
+        R(108, 132, 104, 10, 'rgba(20,12,16,0.8)');
+        R(108+0.6*104, 132, (0.86-0.6)*104, 10, 'rgba(124,232,124,0.35)');
+        R(108, 132, 104*clamp(st.rice,0,1.2), 10, st.rice>0.86 ? '#ff8a70' : '#f2b632');
+        R(108, 132, 104, 1, '#6a5a48'); R(108, 141, 104, 1, '#6a5a48');
+        T('HOLD to pour the sticky rice — stop in the green', 160, 146, 5.2, '#cfc0a8', 'center');
+      }
+      // string wraps
+      if (st.stage===2){
+        for (const w of st.wraps){
+          const yy = cyp + 6 + w.p*30;
+          const half = spread * (1 - w.p*0.7);
+          if (w.hit){ R(cxp-half, yy, half*2, 1.6, '#e8d8b8'); R(cxp-half, yy+1.6, half*2, 1, '#c8b89a'); }
+          else { cx.globalAlpha = 0.4; R(cxp-half, yy, half*2, 1.4, '#f2b632'); cx.globalAlpha = 1; }
+        }
+        const yy = cyp + 6 + st.wrapPos*30;
+        const half = spread * (1 - st.wrapPos*0.7);
+        R(cxp-half-4, yy-1, 4, 3, '#d8b869');
+        R(cxp+half, yy-1, 4, 3, '#d8b869');
+        T('CLICK as the string crosses each gold line', 160, 146, 5.2, '#cfc0a8', 'center');
+      }
+      drawParts(0,0);
+      if (st.flash>0){ cx.globalAlpha = st.flash*0.5; R(0,0,LW,LH,'#d8f0c8'); cx.globalAlpha = 1; }
+      cx.restore();
+
+      mgHeader('ZONGZI WRAP-OFF', 'rice armour for a beloved poet');
+      stepTracker(STEPS, st.stage, '#3f9450');
+      T('ZONGZI '+Math.min(st.idx+1, st.total)+' / '+st.total, 160, 44, 5.4, '#cfc0a8', 'center');
+      if (st.msgT>0 && !st.done) T(st.msg, 160, 54, 6.6, st.msgC, 'center');
+      if (st.done){
+        const avg = st.scores.reduce((a,b)=>a+b,0)/st.scores.length;
+        const [g,c] = gradeOf(avg);
+        box(46, 58, 228, 52);
+        T(g, LW/2, 64, 9, c, 'center');
+        T('A perfect pyramid of zongzi, tied tight!', LW/2, 80, 5.6, '#f4e8d0', 'center');
+        T('✓', LW/2, 94, 6, '#cfc0a8', 'center');
+      }
+    }
+  };
+}
+/* ============================================================
+   DRAGON BOAT RACE — paddle on the drum, steer, dodge, surge
+   ============================================================ */
+const RACE_LEN = 1600;
+const LANES = [76, 106, 136];
+
+function drawRipple(x, y, w, a){
+  cx.globalAlpha = a; R(x, y, w, 1.4, '#7fb4dc'); cx.globalAlpha = 1;
+}
+function drawRock(x, y, t){
+  ell(x, y+6, 11, 3, 'rgba(0,0,0,0.25)');
+  circle(x, y, 9, '#2b2a30'); circle(x, y, 7.6, '#5a5860');
+  circle(x-2, y-2.4, 4, '#7c7a84');
+  R(x-6, y+4, 12, 2, '#3a3840');
+  const sp = Math.sin(t*4+x)*1.4;
+  drawRipple(x-12, y+7+sp, 24, 0.5);
+}
+function drawLog(x, y, t){
+  ell(x, y+6, 15, 3, 'rgba(0,0,0,0.25)');
+  R(x-15, y-4, 30, 9, '#3a2418');
+  R(x-15, y-4, 30, 2, '#6a4a30');
+  R(x-15, y+3, 30, 2, '#2a1a10');
+  for (let i=0;i<4;i++) R(x-11+i*7, y-2, 1.4, 6, '#4a3020');
+  circle(x-15, y+0.5, 4.6, '#5a3c26'); circle(x-15, y+0.5, 3, '#7a5636');
+  drawRipple(x-18, y+8+Math.sin(t*3+x)*1.2, 36, 0.45);
+}
+function drawWhirl(x, y, t){
+  for (let i=0;i<3;i++){
+    const r = 5 + i*3.6, a0 = t*(2.6-i*0.5);
+    for (let k=0;k<8;k++){
+      const a = a0 + k/8*6.283;
+      R(x+Math.cos(a)*r, y+Math.sin(a)*r*0.62, 1.6, 1.6, i%2 ? '#2a5a86' : '#8fc4e4');
+    }
+  }
+  circle(x, y, 2.6, '#16324e');
+}
+function drawFloatZongzi(x, y, t){
+  const bob = Math.sin(t*4+x)*1.6;
+  drawZongzi(x, y+bob, 1.15);
+  drawRipple(x-8, y+7+bob, 16, 0.5);
+  glow(x, y+bob, 11, '#7ce87c', 0.16);
+}
+
+function makeBoatRace(onDone){
+  const BPM = 108, BEAT = 60/BPM;
+  const st = {
+    mode:'intro', t:0, evT:0,
+    dist:0, spd:0, lane:1, laneY:LANES[1],
+    rival:0, rivalLane:0, rivalWob:0,
+    beatT:0, beatN:0, lastSide:null, scoredBeat:-1, strokeCd:0,
+    stam:100, surge:0, combo:0, best:0,
+    stuff:[], splash:0, msg:'', msgT:0, msgC:'#ffe9b0', shake:0,
+    perfect:0, strokes:0,
+  };
+  window.RACE = st;
+  function say2(m,c){ st.msg=m; st.msgT=0.7; st.msgC=c||'#ffe9b0'; }
+  function build(){
+    st.stuff = [];
+    for (let d=150; d<RACE_LEN-60; d+=rnd(46, 78)){
+      const r = Math.random();
+      const kind = r < 0.3 ? 'zongzi' : r < 0.62 ? 'rock' : r < 0.86 ? 'log' : 'whirl';
+      const lane = irnd(0,2);
+      st.stuff.push({ d, lane, kind, gone:false });
+      if (kind !== 'zongzi' && Math.random() < 0.35){
+        let l2 = (lane + 1 + irnd(0,1)) % 3;
+        st.stuff.push({ d: d + rnd(-6,6), lane: l2, kind: Math.random()<0.5?'rock':'log', gone:false });
+      }
+    }
+  }
+  build();
+  function reset(){
+    st.dist=0; st.spd=0; st.lane=1; st.laneY=LANES[1]; st.rival=0;
+    st.stam=100; st.surge=0; st.combo=0; st.lastSide=null;
+    st.perfect=0; st.strokes=0; st.mode='race'; st.evT=0;
+    for (const o of st.stuff) o.gone = false;
+  }
+  function stroke(side){
+    if (st.mode!=='race') return;
+    if (st.strokeCd > 0){ return; }                       // no mashing
+    if (side === st.lastSide){
+      say2('alternate ◀ ▶ !', '#ff8a70'); st.combo = 0; SFX.bad(); st.strokeCd = 0.12; return;
+    }
+    // which beat does this stroke belong to?
+    const beatIdx = st.beatN + (st.beatT > BEAT/2 ? 1 : 0);
+    if (beatIdx === st.scoredBeat){                        // already paddled this beat
+      st.spd += 2; st.combo = 0; st.strokeCd = 0.1;
+      say2('one stroke per beat!', '#ffd0a0'); noiseHit(0.04, 0.1);
+      return;
+    }
+    st.scoredBeat = beatIdx;
+    st.lastSide = side; st.strokes++; st.strokeCd = 0.16;
+    const near = Math.min(st.beatT, BEAT - st.beatT);
+    if (near < BEAT*0.20){
+      st.spd += 20; st.combo++; st.perfect++;
+      st.best = Math.max(st.best, st.combo);
+      say2(st.combo>=6 ? 'ON FIRE! ×'+st.combo : 'PERFECT!', '#7ce87c');
+      SFX.drum();
+      st.stam = Math.min(100, st.stam + 3);
+    } else if (near < BEAT*0.36){
+      st.spd += 11; st.combo = 0; say2('good', '#ffe9b0'); noiseHit(0.07,0.2,true);
+    } else {
+      st.spd += 4; st.combo = 0; say2('off the beat…', '#ffd0a0'); noiseHit(0.05,0.14);
+    }
+    burst(74, st.laneY + (side==='left'?9:-9), ['#cfe4f4','#ffffff'], 5, 26);
+  }
+
+  return {
+    aim:false,
+    enter(){ playMusic(2); },
+    update(dt){
+      st.t += dt; st.evT += dt;
+      st.msgT = Math.max(0, st.msgT-dt);
+      st.shake = Math.max(0, st.shake-dt);
+      st.splash = Math.max(0, st.splash-dt);
+      updateParts(dt);
+
+      if (st.mode==='intro'){ if (st.evT>1.8 || just.a || just.click){ reset(); say2('GO!','#7ce87c'); mdrum(0,0.7); } return; }
+      if (st.mode==='win' || st.mode==='lose'){
+        if ((just.a || just.click) && st.evT>0.8){
+          if (st.mode==='win'){ popScene(); onDone(); }
+          else { reset(); }
+        }
+        return;
+      }
+
+      /* drum */
+      st.strokeCd = Math.max(0, st.strokeCd - dt);
+      st.beatT += dt;
+      if (st.beatT >= BEAT){ st.beatT -= BEAT; st.beatN++; mdrum(0, st.beatN%4===0?0.5:0.3); }
+
+      /* paddling */
+      if (just.left)  stroke('left');
+      if (just.right) stroke('right');
+
+      /* steering */
+      if (just.up   && st.lane > 0){ st.lane--; SFX.blip(); }
+      if (just.down && st.lane < 2){ st.lane++; SFX.blip(); }
+      st.laneY = lerp(st.laneY, LANES[st.lane], clamp(dt*9, 0, 1));
+
+      /* surge */
+      st.surge = Math.max(0, st.surge - dt);
+      if (just.dash && st.stam >= 30 && st.surge<=0){
+        st.stam -= 30; st.surge = 1.1; st.spd += 34;
+        SFX.dash(); say2('SURGE!', '#cfe4f4');
+      }
+      st.stam = Math.min(100, st.stam + 5.5*dt);
+
+      /* motion */
+      st.spd = Math.max(0, st.spd - (st.spd*0.85 + 6)*dt);
+      const boost = st.surge>0 ? 1.45 : 1;
+      st.dist += st.spd * boost * dt;
+      st.rivalWob += dt;
+      st.rival += (30 + Math.sin(st.rivalWob*0.6)*7) * dt;
+
+      /* obstacles & pickups */
+      for (const o of st.stuff){
+        if (o.gone) continue;
+        const rel = o.d - st.dist;
+        if (rel < -20){ o.gone = true; continue; }
+        if (Math.abs(rel) < 7 && o.lane === st.lane){
+          o.gone = true;
+          if (o.kind === 'zongzi'){
+            st.spd += 26; st.stam = Math.min(100, st.stam+18);
+            SFX.sparkle(); say2('ZONGZI! +speed', '#7ce87c');
+            burst(74, st.laneY, ['#3f9450','#7ce87c','#f6ecd8'], 16, 50);
+          } else {
+            st.spd *= o.kind==='whirl' ? 0.35 : 0.5;
+            st.combo = 0; st.shake = 0.45; st.splash = 0.4;
+            SFX.bad(); noiseHit(0.3, 0.4);
+            say2(o.kind==='whirl' ? 'caught in the whirlpool!' : 'CRASH!', '#ff8a70');
+            burst(74, st.laneY, ['#cfe4f4','#8fc4e4','#ffffff'], 22, 70);
+          }
+        }
+      }
+
+      /* finish */
+      if (st.dist >= RACE_LEN){ st.mode='win'; st.evT=0; SFX.win(); playMusic(1); }
+      else if (st.rival >= RACE_LEN){ st.mode='lose'; st.evT=0; SFX.bad(); }
+    },
+
+    render(){
+      const shx = st.shake>0 ? Math.round(Math.sin(st.t*60)*st.shake*5) : 0;
+      cx.save(); cx.translate(shx*P, 0);
+      /* sky + far bank */
+      R(0,0,LW,54,'#bfe0f0');
+      R(0,30,LW,10,'#a8d0e4');
+      R(0,44,LW,14,'#5da442');
+      for (let i=0;i<8;i++){
+        const bx = ((i*54 - (st.dist*0.32) % 54) + LW) % (LW+54) - 27;
+        drawTree(bx, 56, i%2?'round':'pine', 2);
+      }
+      /* the river */
+      R(0,56,LW,LH-56,'#2f6ea8');
+      for (let i=0;i<44;i++){
+        const wx = ((i*29 - (st.dist*1.05) % 29) + LW) % (LW+29) - 15;
+        const wy = 62 + (i%9)*13;
+        drawRipple(wx, wy + Math.sin(st.t*2+i)*1.4, 13, 0.35);
+      }
+      /* lane markers */
+      for (const ly of LANES){
+        for (let i=0;i<12;i++){
+          const bx = ((i*30 - (st.dist*1.05) % 30) + LW) % (LW+30) - 15;
+          R(bx, ly+13, 8, 1, 'rgba(255,255,255,0.10)');
+        }
+      }
+      /* obstacles */
+      for (const o of st.stuff){
+        if (o.gone) continue;
+        const sx = 74 + (o.d - st.dist) * 1.05;
+        if (sx < -30 || sx > LW+30) continue;
+        const y = LANES[o.lane];
+        if (o.kind==='rock')   drawRock(sx, y, st.t);
+        else if (o.kind==='log') drawLog(sx, y, st.t);
+        else if (o.kind==='whirl') drawWhirl(sx, y, st.t);
+        else drawFloatZongzi(sx, y, st.t);
+      }
+      /* finish line */
+      const fx = 74 + (RACE_LEN - st.dist) * 1.05;
+      if (fx < LW+40){
+        for (let i=0;i<10;i++) R(fx, 58+i*12, 4, 8, i%2?'#f2b632':'#e03c28');
+        R(fx-1, 56, 6, 2, '#2b1a26');
+      }
+      /* rival */
+      const rx = 74 + (st.rival - st.dist) * 1.05;
+      if (rx > -50 && rx < LW+50) drawBoat(rx, LANES[0]-4, st.t, {crew:true, seed:3});
+      /* you */
+      drawBoat(74, st.laneY, st.t, {crew:true, seed:1, fast:st.surge>0});
+      if (st.surge>0){
+        for (let i=0;i<4;i++) R(40-i*7, st.laneY+rnd(-4,4), 6, 1.6, '#cfe4f4');
+        glow(74, st.laneY, 24, '#cfe4f4', 0.18);
+      }
+      if (st.splash>0){
+        cx.globalAlpha = st.splash;
+        for (let i=0;i<8;i++) circle(74+rnd(-16,16), st.laneY+rnd(-10,10), rnd(1,3), '#cfe4f4');
+        cx.globalAlpha = 1;
+      }
+      drawParts(0,0);
+      cx.restore();
+
+      /* HUD */
+      mgHeader('DRAGON BOAT RACE', 'row for Qu Yuan');
+      // drum
+      const pu = 1 - clamp(st.beatT/BEAT, 0, 1);
+      drawDrum(20, 44, 0.85 + pu*0.3);
+      glow(20, 38, 9+pu*7, '#f2b632', 0.22*pu);
+      T('BEAT', 12, 48, 4.4, '#8a7c6a');
+      // stamina
+      T('STAMINA', 40, 30, 4.6, '#8a7c6a');
+      R(40, 36, 60, 6, 'rgba(20,12,16,0.85)');
+      R(40, 36, 60*(st.stam/100), 6, st.stam>=30 ? '#7ce87c' : '#8a7c6a');
+      // combo
+      if (st.combo>1) T('×'+st.combo+' COMBO', 108, 30, 5.4, '#ffe9b0');
+      // progress bar: you vs rival
+      R(112, 38, 196, 8, 'rgba(20,12,16,0.85)');
+      R(112, 38, 196, 1, '#6a5a48'); R(112, 45, 196, 1, '#6a5a48');
+      const pyou = clamp(st.dist/RACE_LEN, 0, 1), priv = clamp(st.rival/RACE_LEN, 0, 1);
+      R(113 + priv*192, 39, 3, 6, '#8a8a92');
+      R(113 + pyou*192, 39, 3, 6, '#e03c28');
+      T('YOU', 112, 30, 4.4, '#e03c28'); T('FINISH', 308, 30, 4.4, '#f2b632', 'right');
+      if (st.msgT>0) T(st.msg, LW/2, 60, 6.6, st.msgC, 'center');
+
+      if (st.mode==='intro'){
+        box(30, 66, 260, 54);
+        T('ROW FOR QU YUAN!', LW/2, 72, 8, '#f2b632','center');
+        T('◀ ▶ alternate paddles ON the drum · ▲ ▼ change lane', LW/2, 88, 5.2, '#f4e8d0','center');
+        T('SPACE surges · grab zongzi · dodge rocks and logs', LW/2, 98, 5.2, '#f4e8d0','center');
+        T('✓ to start', LW/2, 110, 5.4, '#ffe9b0','center');
+      } else if (st.mode==='win'){
+        box(40, 62, 240, 54);
+        T('FIRST PLACE!', LW/2, 68, 9, '#f2b632','center');
+        T('Perfect strokes: '+st.perfect+' / '+st.strokes+'   best combo ×'+st.best, LW/2, 84, 5.4, '#f4e8d0','center');
+        T('The drums thunder like they did for Qu Yuan.', LW/2, 94, 5.2, '#cfc0a8','center');
+        T('✓', LW/2, 106, 6, '#cfc0a8','center');
+      } else if (st.mode==='lose'){
+        box(40, 62, 240, 50);
+        T('THEY BEAT YOU TO IT!', LW/2, 68, 8, '#ff8a70','center');
+        T('Stay with the drum — every beat is speed.', LW/2, 84, 5.4, '#f4e8d0','center');
+        T('✓ RACE AGAIN', LW/2, 96, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+      }
+    }
+  };
+}
+/* ============================================================
+   MOONCAKE BAKERY — press the dough, fill it, stamp it, bake it.
+   Four real stages, mouse + keys, with a step tracker like the
+   other kitchen games.
+   ============================================================ */
+
+function drawOven(x, y, t, hot){
+  R(x, y, 60, 50, '#5a4438'); R(x, y, 60, 3, '#7a5c48');
+  R(x+2, y+2, 56, 46, '#4a382e');
+  R(x+8, y+12, 44, 28, '#2a1a12');
+  if (hot > 0){
+    glow(x+30, y+26, 16, '#ff7030', 0.22 + hot*0.24 + Math.sin(t*7)*0.05);
+    R(x+10, y+34, 40, 4, '#ff9040');
+    for (let i=0;i<5;i++){
+      const fy = y+34 - ((t*22 + i*7) % 20);
+      R(x+13+i*8, fy, 2, 3, i%2 ? '#ffb050' : '#ff7030');
+    }
+  }
+  R(x+6, y+8, 48, 2, '#8a6a50');            // door hinge line
+  R(x+24, y+42, 14, 3, '#c8a860');          // handle
+  R(x+4, y-6, 10, 6, '#3a2c24'); R(x+46, y-6, 10, 6, '#3a2c24');  // chimney stubs
+}
+
+/* one mooncake on the tray, drawn at whatever bake-tone it has */
+function bakedCake(x, y, tone, patt){
+  const pale  = ['#e8c88a','#d8b070','#c89858'];
+  const gold  = ['#f2b632','#d89020','#b06c14'];
+  const burnt = ['#7a4a20','#5a3414','#3a2008'];
+  const mix = (a,b,k)=>{
+    const pa = parseInt(a.slice(1),16), pb = parseInt(b.slice(1),16);
+    const r = Math.round((pa>>16)*(1-k) + (pb>>16)*k);
+    const g = Math.round(((pa>>8)&255)*(1-k) + ((pb>>8)&255)*k);
+    const bl= Math.round((pa&255)*(1-k) + ((pb)&255)*k);
+    return '#' + ((1<<24)|(r<<16)|(g<<8)|bl).toString(16).slice(1);
+  };
+  let pal;
+  if (tone < 0.5){ const k = tone/0.5; pal = pale.map((c,i)=> mix(c, gold[i], k)); }
+  else { const k = (tone-0.5)/0.5; pal = gold.map((c,i)=> mix(c, burnt[i], k)); }
+  ell(x, y+7, 13, 4, 'rgba(20,12,16,0.30)');
+  ell(x, y, 13, 9, pal[2]);
+  ell(x, y-1, 12, 8, pal[0]);
+  ell(x, y-1, 9, 6, pal[1]);
+  // pressed pattern
+  if (patt){
+    R(x-5, y-2, 10, 1, pal[2]); R(x-1, y-5, 1, 8, pal[2]);
+    R(x-4, y-4, 1, 1, pal[2]); R(x+3, y-4, 1, 1, pal[2]);
+    R(x-4, y+2, 1, 1, pal[2]); R(x+3, y+2, 1, 1, pal[2]);
+  }
+  if (tone > 0.86) for (let i=0;i<3;i++) R(x-6+i*5, y-4+((i*3)%5), 2, 1, '#2a1608');
+}
+
+/* the dough disc: filled scanline by scanline, each pixel coloured by how
+   thick its wedge still is, so the shape stays hard-edged pixel art */
+function doughDisc(px, py, rx, ry, sect){
+  const SH = ['#c8a066','#dcb87e','#f0d8a4','#8a6a44'];
+  const tone = th => th > 0.62 ? 0 : th > 0.26 ? 1 : th < -0.16 ? 3 : 2;
+  const iry = Math.round(ry), irx = Math.round(rx);
+  for (let yy = -iry; yy <= iry; yy++){
+    const k = 1 - (yy*yy)/(ry*ry);
+    if (k <= 0) continue;
+    const half = Math.floor(rx*Math.sqrt(k));
+    let runX = -half, runC = -1;
+    for (let xx = -half; xx <= half+1; xx++){
+      let c = -1;
+      if (xx <= half){
+        let a = Math.atan2(yy*(rx/ry), xx); if (a < 0) a += Math.PI*2;
+        c = tone(clamp(sect[Math.floor(a/(Math.PI*2/6)) % 6], -0.4, 1));
+      }
+      if (c !== runC){
+        if (runC >= 0) R(px+runX, py+yy, xx-runX, 1, SH[runC]);
+        runX = xx; runC = c;
+      }
+    }
+    // crust edge
+    R(px-half, py+yy, 1, 1, '#c8a066'); R(px+half, py+yy, 1, 1, '#c8a066');
+  }
+  for (let xx = -irx; xx <= irx; xx++){
+    const k = 1 - (xx*xx)/(rx*rx);
+    if (k <= 0) continue;
+    const h = Math.floor(ry*Math.sqrt(k));
+    R(px+xx, py-h, 1, 1, '#f6ecd8');
+    R(px+xx, py+h, 1, 1, '#a8845c');
+  }
+}
+
+function makeMooncakeGame(onDone){
+  const st = {
+    idx:0, total:3, stage:0, t:0, evT:0, done:false,
+    // press
+    sect:[1,1,1,1,1,1], palmX:160, palmY:104, pressing:false,
+    // fill
+    sub:0, paste:0, pouring:false, yolkX:200, yolkY:78, yolkSet:false,
+    // stamp
+    moldY:40, moldRot:0, moldTarget:0, moldDrop:false, depth:0, stamped:false,
+    // bake
+    tone:0, wash:false, washCue:-1, pulled:false,
+    cakes:[], scores:[], stageScore:[],
+    msg:'', msgT:0, msgC:'#ffe9b0', shake:0, flash:0,
+  };
+  window.MOON = st;
+  const STEPS = ['PRESS', 'FILL', 'STAMP'];
+  /* the mould face has four identical spokes, so a quarter turn is the same
+     pattern — measure how far off we are within one 90 degree sector */
+  function moldSigned(){
+    let d = ((st.moldRot - st.moldTarget) % 90 + 90) % 90;
+    return d > 45 ? d - 90 : d;                      // -45 .. +45
+  }
+  function moldOff(){ return Math.abs(moldSigned()); }
+  function say2(m,c){ st.msg=m; st.msgT=1.2; st.msgC=c||'#ffe9b0'; }
+
+  function resetCake(){
+    st.sect=[1,1,1,1,1,1]; st.palmX=160; st.palmY=104; st.pressing=false;
+    st.sub=0; st.paste=0; st.pouring=false; st.yolkSet=false;
+    st.yolkX=200; st.yolkY=78;
+    st.moldY=68; st.moldRot=0; st.depth=0; st.moldDrop=false; st.stamped=false;
+    st.moldTarget = [8, 26, 44, 62][Math.floor(Math.random()*4)];
+    st.stageScore=[];
+    st.stage=0;
+  }
+  resetCake();
+
+  const CX0 = 160, CY0 = 116;             // dough centre on the table
+
+  function finishStage(score){
+    st.stageScore.push(clamp(score,0,1));
+    st.stage++;
+    st.flash = 0.3;
+    if (st.stage >= 3){
+      const avg = st.stageScore.reduce((a,b)=>a+b,0) / st.stageScore.length;
+      st.scores.push(avg);
+      st.cakes.push({ q: avg });
+      const [g,c] = gradeOf(avg);
+      say2(g + '  mooncake ' + (st.idx+1) + ' done!', c);
+      burst(CX0, CY0, ['#f2b632','#ffe98a','#ffd964'], 26, 66);
+      SFX.win();
+      st.idx++;
+      if (st.idx >= st.total){ st.stage = 3; st.evT = 0; st.washCue = 0.9 + Math.random()*0.9; }
+      else resetCake();
+    } else {
+      SFX.good();
+    }
+  }
+
+  return {
+    aim:false,
+    update(dt){
+      st.t += dt; st.evT += dt;
+      st.msgT = Math.max(0, st.msgT-dt);
+      st.shake = Math.max(0, st.shake-dt);
+      st.flash = Math.max(0, st.flash-dt);
+      updateParts(dt);
+      if (st.done){
+        if (st.evT > 2.2 || ((just.a||just.click) && st.evT > 0.8)){ popScene(); onDone(); }
+        return;
+      }
+
+      /* ---------- 1. PRESS: flatten every wedge of dough ---------- */
+      if (st.stage===0){
+        if (mouse.over){ st.palmX = mouse.x; st.palmY = mouse.y; }
+        else {
+          if (keys.left)  st.palmX -= 92*dt;
+          if (keys.right) st.palmX += 92*dt;
+          if (keys.up)    st.palmY -= 92*dt;
+          if (keys.down)  st.palmY += 92*dt;
+        }
+        st.palmX = clamp(st.palmX, CX0-34, CX0+34);
+        st.palmY = clamp(st.palmY, CY0-30, CY0+30);
+        st.pressing = keys.a || mouse.down;
+        if (st.pressing){
+          const dx = st.palmX-CX0, dy = (st.palmY-CY0)*1.5;
+          const d = Math.hypot(dx, dy);
+          if (d < 30){
+            let a = Math.atan2(dy, dx); if (a < 0) a += Math.PI*2;
+            const si = Math.floor(a / (Math.PI*2/6)) % 6;
+            st.sect[si] = Math.max(-0.4, st.sect[si] - dt*1.35);
+            if (Math.random()<0.3) spawnPart({x:st.palmX+rnd(-6,6), y:st.palmY+rnd(-3,3), vx:rnd(-8,8), vy:-rnd(4,16), g:20, life:0.45, t:0, c:'#f6ecd8', sz:1.4});
+            if (Math.random()<0.09) SFX.blip();
+          }
+        }
+        const flat = st.sect.every(s => s <= 0.26);
+        if (flat){
+          const over = st.sect.filter(s => s < -0.16).length;
+          const evenness = 1 - (Math.max(...st.sect) - Math.min(...st.sect)) * 0.9;
+          const sc = clamp(evenness - over*0.18, 0, 1);
+          if (over >= 3) say2('a bit torn — patch it up', '#ff8a70');
+          finishStage(sc);
+        }
+        return;
+      }
+
+      /* ---------- 2. FILL: pour lotus paste, then seat the yolk ---------- */
+      if (st.stage===1){
+        if (st.sub===0){
+          st.pouring = keys.a || mouse.down;
+          if (st.pouring){
+            st.paste += dt*0.42;
+            if (Math.random()<0.5) spawnPart({x:CX0+rnd(-4,4), y:96, vx:0, vy:34, g:120, life:0.34, t:0, c:'#d8a860', sz:1.6});
+            if (Math.random()<0.11) SFX.blip();
+          } else if (st.paste > 0.08){
+            const sc = st.paste >= 0.62 && st.paste <= 0.86 ? 1 - Math.abs(st.paste-0.74)/0.16*0.35
+                     : Math.max(0, 1 - Math.abs(st.paste-0.74)*2.4);
+            st.stageScore.push(clamp(sc,0,1));
+            if (st.paste < 0.62) say2('thin filling… still tasty', '#ff8a70');
+            else if (st.paste > 0.86) say2('overstuffed! it may burst', '#ff8a70');
+            else say2('just right — now the yolk', '#7ce87c');
+            st.sub = 1; SFX.good();
+          }
+          if (st.paste > 1.25){ st.paste = 1.25; }
+          return;
+        }
+        // sub 1: the salted egg yolk — the little full moon inside
+        if (mouse.over){ st.yolkX = mouse.x; st.yolkY = mouse.y; }
+        else {
+          if (keys.left)  st.yolkX -= 88*dt;
+          if (keys.right) st.yolkX += 88*dt;
+          if (keys.up)    st.yolkY -= 88*dt;
+          if (keys.down)  st.yolkY += 88*dt;
+        }
+        st.yolkX = clamp(st.yolkX, 30, 290); st.yolkY = clamp(st.yolkY, 60, 150);
+        if (just.a || just.click){
+          const d = Math.hypot(st.yolkX-CX0, (st.yolkY-(CY0-4))*1.4);
+          const sc = clamp(1 - d/22, 0, 1);
+          st.yolkSet = true;
+          burst(st.yolkX, st.yolkY, ['#ffb030','#ffd964'], 14, 40);
+          if (d < 6) say2('dead centre — a full moon inside!', '#7ce87c');
+          else if (d < 16) say2('close enough', '#ffe9b0');
+          else { say2('off to one side…', '#ff8a70'); st.shake = 0.2; }
+          finishStage(sc);
+        }
+        return;
+      }
+
+      /* ---------- 3. STAMP: line up the mould, press to the right depth ---------- */
+      if (st.stage===2){
+        if (!st.moldDrop){
+          if (keys.left)  st.moldRot -= 96*dt;
+          if (keys.right) st.moldRot += 96*dt;
+          st.moldRot = (st.moldRot + 360) % 360;
+          st.moldY = 68 + Math.sin(st.t*2)*2;
+          if (just.a || just.click){ st.moldDrop = true; SFX.blip(); }
+          return;
+        }
+        // pressing down: depth climbs while held, springs back when let go
+        const holding = keys.a || mouse.down;
+        if (holding && !st.stamped){
+          st.depth += dt*0.62;
+          st.moldY = 68 + st.depth*38;
+          if (Math.random()<0.2) spawnPart({x:CX0+rnd(-12,12), y:CY0-2, vx:rnd(-14,14), vy:-rnd(2,10), g:30, life:0.35, t:0, c:'#f6ecd8', sz:1.2});
+          if (st.depth > 1.25){
+            st.stamped = true;
+            say2('SQUASHED! too hard', '#ff8a70'); st.shake = 0.3; SFX.bad();
+            finishStage(0.2);
+          }
+        } else if (!holding && st.depth > 0.05 && !st.stamped){
+          st.stamped = true;
+          const da = moldOff();                            // 0 = perfectly lined up
+          const dep = clamp(1 - Math.abs(st.depth-0.78)/0.4, 0, 1);
+          const rot = clamp(1 - da/40, 0, 1);
+          const sc = dep*0.55 + rot*0.45;
+          burst(CX0, CY0-2, ['#f2b632','#ffe98a'], 20, 52);
+          if (sc > 0.82) say2('a crisp, clean pattern!', '#7ce87c');
+          else if (st.depth < 0.5) say2('too light — the pattern is faint', '#ff8a70');
+          else if (rot < 0.4) say2('the pattern came out crooked', '#ff8a70');
+          else say2('good enough for the tray', '#ffe9b0');
+          SFX.good();
+          finishStage(sc);
+        }
+        return;
+      }
+
+      /* ---------- 4. BAKE: brush the egg wash, pull at golden ---------- */
+      if (st.stage===3){
+        st.tone += dt*0.115;
+        if (st.washCue > 0 && st.evT > st.washCue && !st.wash){
+          if (just.a || just.click){
+            st.wash = true; SFX.sparkle();
+            say2('egg wash on — that is where the shine comes from', '#7ce87c');
+            burst(160, 92, ['#ffd964','#ffe98a'], 16, 44);
+          }
+          if (st.evT > st.washCue + 3.0){
+            st.washCue = -1;
+            say2('missed the egg wash — they will look dull', '#ff8a70');
+          }
+        } else if (!st.pulled && st.evT > 0.7 && (just.a || just.click)){
+          st.pulled = true;
+          const sc = clamp(1 - Math.abs(st.tone-0.52)/0.34, 0, 1) * (st.wash ? 1 : 0.8);
+          const avg = st.scores.reduce((a,b)=>a+b,0) / st.scores.length;
+          st.final = clamp(avg*0.72 + sc*0.28, 0, 1);
+          st.done = true; st.evT = 0;
+          SFX.win();
+          burst(160, 100, ['#f2b632','#ff5838','#ffe98a','#ffd964'], 46, 84);
+        }
+        if (st.tone > 1.06 && !st.pulled){
+          st.pulled = true;
+          const avg = st.scores.reduce((a,b)=>a+b,0) / st.scores.length;
+          st.final = clamp(avg*0.72 + 0.06, 0, 1);
+          st.tone = 1.06;
+          st.done = true; st.evT = 0;
+          say2('BURNT! Fang will never mention it again', '#ff8a70');
+          SFX.bad();
+        }
+        return;
+      }
+    },
+
+    render(){
+      const sh = st.shake>0 ? Math.sin(st.t*60)*2 : 0;
+      cx.save(); cx.translate(sh*P, 0);
+
+      /* ---- bakery room ---- */
+      R(0,0,LW,LH,'#4a3626');
+      for (let i=0;i<LW;i+=24) R(i,0,1,LH,'rgba(0,0,0,0.14)');
+      R(0,44,LW,10,'#6a4c34'); R(0,44,LW,2,'#8a6444');
+      // flour sacks + rolling pins on the wall shelf
+      R(232,58,58,3,'#8a6a48'); R(240,50,3,8,'#a88054'); R(272,50,3,8,'#a88054');
+      R(0,124,LW,56,'#8a6844'); R(0,124,LW,3,'#a88054');
+      for (let i=0;i<LW;i+=26) R(i,127,1,53,'rgba(0,0,0,0.10)');
+      R(8,112,20,15,'#c8b696'); R(8,112,20,2,'#e0d2b0'); T('米',15,116,5,'#8a7458');
+      R(292,114,18,13,'#b8a284'); R(292,114,18,2,'#c8b696');
+      drawOven(20, 66, st.t, st.stage===3 ? 1 : 0.35);
+      drawLantern(300, 60, 0.85, true, st.t);
+      glow(50, 92, 40, '#ffb050', 0.07);
+
+      // finished cakes waiting on the tray, right side
+      if (st.stage < 3){
+        R(238, 122, 66, 5, '#6a4c30');
+        st.cakes.forEach((c,i)=> bakedCake(252+i*22, 118, 0.35, true));
+      }
+
+      drawParts(0,0);
+
+      /* ---- stage 4 lives in the oven, draw it and bail ---- */
+      if (st.stage===3){
+        mgHeader('MOONCAKE BAKERY', 'the bake — watch the colour');
+        // tray inside the oven glow
+        const trayY = st.done ? 74 : 104;
+        R(96, trayY+4, 128, 6, '#6a4c30'); R(96, trayY+4, 128, 1, '#8a6444');
+        st.cakes.forEach((c,i)=> bakedCake(122+i*38, trayY, clamp(st.tone,0,1), true));
+        glow(160, trayY, 58, '#ff8030', st.done ? 0.14 : 0.10 + Math.sin(st.t*6)*0.03);
+        // colour meter with the golden band marked
+        const mx = 62, mw = 196;
+        if (!st.done){
+        R(mx, 142, mw, 11, 'rgba(20,12,16,0.85)');
+        for (let i=0;i<mw;i+=2){
+          const k = i/mw;
+          R(mx+i, 143, 2, 9, k<0.5 ? '#e8c88a' : k<0.72 ? '#f2b632' : k<0.86 ? '#b06c14' : '#5a3414');
+        }
+        const gz0 = mx + mw*0.42, gz1 = mx + mw*0.62;
+        R(gz0, 141, 1, 13, '#ffffff'); R(gz1, 141, 1, 13, '#ffffff');
+        T('GOLDEN', (gz0+gz1)/2, 133, 5, '#ffe9b0','center');
+        R(mx + mw*clamp(st.tone,0,1) - 1, 138, 2, 19, '#ffffff');
+        }
+        if (!st.done){
+          if (st.evT <= 0.7){
+            T('into the oven…', 160, 66, 6.4, '#ffe9b0','center');
+          } else if (st.washCue > 0 && st.evT > st.washCue && !st.wash){
+            const flashOn = Math.sin(st.t*14) > -0.2;
+            box(96, 60, 128, 20, {border: flashOn ? '#ffe98a' : '#c8a860'});
+            T('BRUSH THE EGG WASH!', 160, 65, 6.6, flashOn ? '#ffe98a' : '#f4e8d0','center');
+            T('click  ·  or  ✓', 160, 73, 5, '#cfc0a8','center');
+          } else {
+            T('PULL THE TRAY when the colour hits GOLDEN', 160, 62, 6, '#ffe9b0','center');
+            T('click  ·  or  ✓', 160, 71, 5.2, '#cfc0a8','center');
+          }
+        }
+        if (st.wash && !st.done) T('✓ egg wash', 264, 160, 5, '#7ce87c','center');
+        if (st.msgT>0 && !st.done) T(st.msg, 160, 122, 6.2, st.msgC, 'center');
+        if (st.done){
+          const [g,c] = gradeOf(st.final);
+          box(40, 96, 240, 66);
+          T(g, 160, 102, 9.4, c, 'center');
+          T('A tray of mooncakes — round like the moon,', 160, 118, 5.6, '#f4e8d0','center');
+          T('round like a family all in one place.', 160, 127, 5.6, '#f4e8d0','center');
+          T('tuányuán  团圆  ·  reunion', 160, 139, 6, '#ffe9b0','center');
+          T('✓ to continue', 160, 151, 5.2, '#cfc0a8','center');
+        }
+        cx.restore();
+        return;
+      }
+
+      mgHeader('MOONCAKE BAKERY', 'mooncake ' + (st.idx+1) + ' of ' + st.total);
+      stepTracker(STEPS, st.stage, '#f2b632');
+
+      /* ---- the dough on the table ---- */
+      const flat = 1 - Math.max(0, Math.min(1, (st.sect.reduce((a,b)=>a+b,0)/6)));
+      const rx = 18 + flat*11, ry = 8 + flat*5;
+      ell(CX0, CY0+7, rx, ry*0.45, 'rgba(20,12,16,0.28)');
+      doughDisc(CX0, CY0, rx, ry, st.sect);
+
+      if (st.stage===0){
+        // thickness dial around the dough
+        for (let s=0;s<6;s++){
+          const a = s*(Math.PI*2/6) + Math.PI/6;
+          const dx = CX0 + Math.cos(a)*42, dy = CY0 + Math.sin(a)*26;
+          const th = clamp(st.sect[s], -0.4, 1);
+          const col = th > 0.62 ? '#ff8a70' : th > 0.26 ? '#ffe9b0' : th < -0.16 ? '#ff8a70' : '#7ce87c';
+          R(dx-5, dy-2, 10, 4, 'rgba(20,12,16,0.8)');
+          R(dx-5, dy-2, 10*clamp(th,0,1), 4, col);
+          if (th <= 0.26 && th >= -0.16) T('✓', dx-1.5, dy-2.6, 5, '#7ce87c');
+        }
+        // the palm
+        const pr = st.pressing ? 9 : 7;
+        ell(st.palmX, st.palmY, pr, pr*0.7, st.pressing ? 'rgba(242,182,50,0.35)' : 'rgba(244,232,208,0.20)');
+        for (let a=0;a<Math.PI*2;a+=0.34) R(st.palmX+Math.cos(a)*pr, st.palmY+Math.sin(a)*pr*0.7, 1.4, 1.4, st.pressing ? '#ffe98a' : '#f4e8d0');
+        T('flatten every wedge until it turns green', 160, 158, 5.8, '#ffe9b0','center');
+        T('move the palm  ·  hold click or ✓ to press', 160, 168, 5.2, '#9a8c78','center');
+      }
+
+      if (st.stage===1){
+        if (st.sub===0){
+          // lotus paste mound
+          const ph = clamp(st.paste,0,1.25)*11;
+          if (ph > 0.5){
+            dome(CX0, CY0+1, 11+ph*0.45, ph+1, '#a87434');
+            dome(CX0, CY0, 10+ph*0.4, ph, '#d8a860');
+          }
+          if (ph > 2) dome(CX0, CY0-1, 7+ph*0.3, ph*0.7, '#e8bc78');
+          const lx = st.pouring ? CX0 : CX0+30, ly = st.pouring ? 74 : 70;
+          if (st.pouring){
+            R(CX0-2, 82, 4, 14, '#d8a860'); R(CX0-1, 82, 2, 14, '#e8bc78');
+          }
+          dome(lx, ly+5, 9, 3, '#7a6a54');          // bowl underside
+          ell(lx, ly+2, 9, 4, '#a89478');
+          ell(lx, ly+1, 7, 3, st.pouring ? '#d8a860' : '#c8b696');
+          R(lx+7, ly-14, 3, 17, '#8a6a48'); R(lx+7, ly-14, 3, 2, '#a88054');
+          // fill gauge
+          const gx = 96, gw = 128;
+          R(gx, 150, gw, 9, 'rgba(20,12,16,0.85)');
+          R(gx + gw*0.62/1.25, 149, gw*0.24/1.25, 11, 'rgba(124,232,124,0.30)');
+          R(gx + gw*0.62/1.25, 149, 1, 11, '#7ce87c');
+          R(gx + gw*0.86/1.25, 149, 1, 11, '#7ce87c');
+          R(gx, 151, gw*clamp(st.paste,0,1.25)/1.25, 7, st.paste>0.86 ? '#ff8a70' : st.paste>=0.62 ? '#7ce87c' : '#f2b632');
+          T('lotus paste', gx-2, 151, 5.2, '#cfc0a8','right');
+          T('HOLD to pour — stop inside the green', 160, 162, 5.6, '#ffe9b0','center');
+          T('let go when it looks right', 160, 171, 5, '#9a8c78','center');
+        } else {
+          const ph = clamp(st.paste,0,1.25)*11;
+          dome(CX0, CY0+1, 11+ph*0.45, ph+1, '#a87434');
+          dome(CX0, CY0, 10+ph*0.4, ph, '#d8a860');
+          dome(CX0, CY0-1, 7+ph*0.3, ph*0.7, '#e8bc78');
+          // target ring on the paste
+          for (let a=0;a<Math.PI*2;a+=0.3) R(CX0+Math.cos(a)*9, (CY0-4)+Math.sin(a)*6, 1.4, 1.4, 'rgba(124,232,124,0.7)');
+          R(CX0-1, CY0-5, 2, 2, '#7ce87c');
+          // the yolk you are carrying
+          circle(st.yolkX, st.yolkY, 5, '#c07818');
+          circle(st.yolkX, st.yolkY-1, 4, '#ffb030');
+          circle(st.yolkX-1, st.yolkY-2, 2, '#ffd964');
+          T('drop the salted yolk in the CENTRE', 160, 158, 5.8, '#ffe9b0','center');
+          T('move it  ·  click or ✓ to set it', 160, 168, 5.2, '#9a8c78','center');
+        }
+      }
+
+      if (st.stage===2){
+        const ph = clamp(st.paste,0,1.25)*10;
+        dome(CX0, CY0+1, 13+ph*0.35, ph*0.9+1, '#a87434');
+        dome(CX0, CY0, 12+ph*0.3, ph*0.8, '#d8a860');
+        dome(CX0, CY0-1, 9+ph*0.25, ph*0.6, '#e8bc78');
+        if (st.yolkSet){ circle(CX0, CY0-4, 3, '#c07818'); circle(CX0, CY0-5, 2, '#ffb030'); }
+        // the mould: a round block with a pattern face, rotates
+        const my = st.moldY, ra = st.moldRot*Math.PI/180;
+        R(CX0-3, my-16, 6, 13, '#8a6a48'); R(CX0-6, my-20, 12, 5, '#a88054');
+        ell(CX0, my, 16, 10, '#6a4c30'); ell(CX0, my-1, 15, 9, '#8a6a48');
+        // pattern spokes show the rotation
+        for (let k=0;k<4;k++){
+          const a = ra + k*Math.PI/2;
+          for (let r=3;r<12;r+=1.2) R(CX0+Math.cos(a)*r, (my-1)+Math.sin(a)*r*0.6, 1.4, 1.4, '#c8a860');
+        }
+        circle(CX0, my-1, 3, '#c8a860');
+        // alignment guide on the dough
+        const da = moldOff(), lined = da < 12;
+        for (let k=0;k<4;k++){
+          const a = st.moldTarget*Math.PI/180 + k*Math.PI/2;
+          const gc = lined ? '#9cff9c' : '#4aba4a';
+          for (let r=17;r<25;r+=1.4) R(CX0+Math.cos(a)*r, CY0+Math.sin(a)*r*0.62, 1.4, 1.4, gc);
+          R(CX0+Math.cos(a)*26-1, CY0+Math.sin(a)*26*0.62-1, 3, 3, gc);
+        }
+        if (!st.moldDrop){
+          T(lined ? 'LINED UP — now press!' : 'turn the mould onto the green guide', 160, 150, 6, lined ? '#7ce87c' : '#ffe9b0','center');
+          T('◀ ▶ rotate  ·  click or ✓ to lower it', 160, 160, 5.2, '#9a8c78','center');
+          const bx0 = 88, bw2 = 144, mid = bx0 + bw2/2, sc2 = (bw2/2)/45;
+          R(bx0, 166, bw2, 7, 'rgba(20,12,16,0.85)');
+          R(mid - 12*sc2, 165, 24*sc2, 9, 'rgba(124,232,124,0.30)');
+          R(mid - 12*sc2, 165, 1, 9, '#7ce87c'); R(mid + 12*sc2, 165, 1, 9, '#7ce87c');
+          R(mid + moldSigned()*sc2 - 1, 163, 2, 12, lined ? '#7ce87c' : '#f2b632');
+        } else {
+          // depth meter with the sweet band
+          const dx0 = 246, dh = 76;
+          R(dx0, 74, 11, dh, 'rgba(20,12,16,0.85)');
+          R(dx0, 74 + dh*(1-0.98), 11, dh*0.40, 'rgba(255,138,112,0.25)');
+          R(dx0, 74 + dh*(1-0.98), 11, dh*0.22, 'rgba(124,232,124,0.30)');
+          R(dx0, 74 + dh*(1-0.98), 11, 1, '#7ce87c');
+          R(dx0, 74 + dh*(1-0.58), 11, 1, '#7ce87c');
+          const dy0 = 74 + dh*(1 - clamp(st.depth,0,1.25)/1.25);
+          R(dx0-2, dy0-1, 15, 2, '#ffffff');
+          T('DEPTH', dx0+5.5, 66, 5, '#cfc0a8','center');
+          T('release inside the green', 160, 152, 6, '#ffe9b0','center');
+          T('hold to press deeper  ·  let go to lift', 160, 162, 5.2, '#9a8c78','center');
+        }
+      }
+
+      if (st.msgT>0 && st.stage!==3) T(st.msg, 160, 140, 6.2, st.msgC, 'center');
+      if (st.flash>0){ cx.globalAlpha = st.flash*0.5; R(0,0,LW,LH,'#ffe98a'); cx.globalAlpha = 1; }
+      cx.restore();
+    }
+  };
+}
+/* ============================================================
+   QUIZ / LANTERN RIDDLES — clickable answers, a lantern timer,
+   streaks, eliminated options and a score card at the end.
+   ============================================================ */
+
+/* a paper lantern that carries a correct answer up into the sky */
+function riseLantern(L, t){
+  const x = L.x + Math.sin(t*0.8 + L.seed)*3, y = L.y;
+  const s = L.s;
+  glow(x, y, 13*s, '#ffb050', 0.20);
+  R(x-4*s, y+6*s, 8*s, 2*s, '#c8452c');
+  ell(x, y, 6*s, 8*s, '#e04a30');
+  ell(x, y, 4.6*s, 6.6*s, '#ff6a3a');
+  ell(x, y-1*s, 2.6*s, 4*s, '#ffd964');
+  R(x-6*s, y-1*s, 12*s, 1, 'rgba(120,20,10,0.45)');
+  R(x-4*s, y-8*s, 8*s, 1.4*s, '#c8a860');
+  R(x-3*s, y+8*s, 6*s, 3*s, '#f2b632');
+}
+
+function makeQuizGame(questions, opts, onDone){
+  const st = {
+    idx:0, sel:0, state:'ask', t:0, evT:0,
+    n: questions[0].a.length, total: questions.length,
+    time:0, limit:opts.limit || 22,
+    dead:[],                    // options burned away by Lóng
+    streak:0, best:0, clean:0, tries:0, firstTry:true,
+    lanterns:[], shake:0, flash:0, hintT:0,
+    hover:-1, done:false,
+  };
+  window.QUIZ = st;
+  const q = ()=> questions[st.idx];
+
+  function rowRect(i, n){
+    const pitch = n >= 4 ? 13 : 15;
+    const top = 138 - n*pitch;
+    return { x: 40, y: top + i*pitch, w: 240, h: pitch - 2 };
+  }
+  function answer(i){
+    if (st.dead.includes(i)) { SFX.bad(); st.shake = 0.15; return; }
+    st.tries++;
+    if (i === q().correct){
+      st.state = 'right'; st.evT = 0; SFX.good();
+      if (st.firstTry){ st.clean++; st.streak++; st.best = Math.max(st.best, st.streak); }
+      else st.streak = 0;
+      st.lanterns.push({ x: rnd(34,286), y: 176, s: rnd(0.75,1.15), seed: rnd(0,6), v: rnd(6,11) });
+      st.flash = 0.28;
+      burst(160, 60, ['#f2b632','#ffe98a','#7ce87c'], 24, 60);
+    } else {
+      st.state='wrong'; st.evT = 0; SFX.bad();
+      st.shake = 0.32; st.streak = 0; st.firstTry = false;
+      if (!st.dead.includes(i)) st.dead.push(i);
+    }
+  }
+  function nextQ(){
+    st.idx++;
+    if (st.idx >= questions.length){ st.state = 'score'; st.evT = 0; SFX.win();
+      burst(160, 90, ['#f2b632','#ff5838','#7ce87c','#cfe4f4'], 44, 80); return; }
+    st.sel = 0; st.dead = []; st.state = 'ask'; st.time = 0; st.firstTry = true; st.hintT = 0;
+  }
+
+  return {
+    aim:false,
+    update(dt){
+      st.t += dt; st.evT += dt;
+      st.shake = Math.max(0, st.shake-dt);
+      st.flash = Math.max(0, st.flash-dt);
+      st.hintT = Math.max(0, st.hintT-dt);
+      if (st.idx < questions.length) st.n = questions[st.idx].a.length;
+      st.total = questions.length;
+      updateParts(dt);
+      for (const L of st.lanterns){ L.y -= dt*L.v; }
+      if (st.lanterns.length > 24) st.lanterns.splice(0, st.lanterns.length-24);
+
+      if (st.state === 'score'){
+        if (st.evT > 0.7 && (just.a || just.click)){ popScene(); onDone(); }
+        return;
+      }
+
+      if (st.state === 'ask'){
+        const n = q().a.length;
+        // hover / click
+        st.hover = -1;
+        for (let i=0;i<n;i++){
+          const r = rowRect(i,n);
+          if (hoverIn(r.x, r.y, r.w, r.h)) st.hover = i;
+          if (clickIn(r.x, r.y, r.w, r.h)){ st.sel = i; answer(i); return; }
+        }
+        if (just.up){   do { st.sel=(st.sel+n-1)%n; } while (st.dead.includes(st.sel) && st.dead.length<n-1); SFX.blip(); }
+        if (just.down){ do { st.sel=(st.sel+1)%n;   } while (st.dead.includes(st.sel) && st.dead.length<n-1); SFX.blip(); }
+        if (just.a){ answer(st.sel); return; }
+        // the lantern timer: when it burns down, Lóng burns away a wrong answer
+        st.time += dt;
+        if (st.time >= st.limit){
+          st.time = 0; st.firstTry = false; st.streak = 0;
+          const wrongLeft = [];
+          for (let i=0;i<n;i++) if (i !== q().correct && !st.dead.includes(i)) wrongLeft.push(i);
+          if (wrongLeft.length > 1){
+            st.dead.push(pick(wrongLeft));
+            st.hintT = 2.4; SFX.sparkle(); st.flash = 0.2;
+            if (st.dead.includes(st.sel)) st.sel = q().correct;
+          }
+        }
+        return;
+      }
+
+      // right / wrong panels
+      if ((just.a || just.click) && st.evT > 0.45){
+        if (st.state === 'right') nextQ();
+        else { st.state = 'ask'; st.time = 0; }
+      }
+    },
+
+    render(){
+      const sh = st.shake>0 ? Math.sin(st.t*70)*2 : 0;
+      cx.save(); cx.translate(sh*P, 0);
+
+      /* ---- night sky ---- */
+      R(0,0,LW,LH,'#141830');
+      R(0,0,LW,64,'#101426');
+      for (let i=0;i<54;i++){
+        const hx = thash(i,7)*LW, hy = thash(i,13)*110;
+        if (Math.sin(st.t*1.7+i*1.3) > -0.45) R(hx, hy, 1.4, 1.4, i%5 ? '#e8e4f4' : '#cfe4f4');
+      }
+      if (opts.moon) drawMoon(282, 50, 13, 0);
+      for (const L of st.lanterns) riseLantern(L, st.t);
+      // rooftops, kept below everything the player has to read
+      for (let i=0;i<5;i++){
+        const bx = i*68 - 8;
+        R(bx, 162, 52, 8, '#2a2438'); R(bx-3, 159, 58, 4, '#3a3050');
+        if (i%2===0) R(bx+14, 164, 6, 4, 'rgba(242,182,50,0.45)');
+      }
+      R(0,170,LW,10,'#1c2618');
+      drawParts(0,0);
+
+      mgHeader(opts.title, opts.sub);
+
+      /* ---- score card ---- */
+      if (st.state === 'score'){
+        const pct = st.clean / questions.length;
+        const [g,c] = pct >= 0.99 ? ['FLAWLESS!', '#7ce87c'] :
+                      pct >= 0.5  ? ['WELL DONE', '#ffe9b0'] : ['YOU GOT THERE', '#f2b632'];
+        box(52, 44, 216, 86);
+        T(g, 160, 51, 9.4, c, 'center');
+        T(st.clean + ' / ' + questions.length + ' on the first try', 160, 68, 6.6, '#f4e8d0','center');
+        T('best streak: ' + st.best, 160, 79, 6, '#ffe9b0','center');
+        const lit = Math.round(pct*10);
+        for (let i=0;i<10;i++) R(96+i*13, 90, 9, 7, i<lit ? '#f2b632' : 'rgba(244,232,208,0.14)');
+        T(opts.lanterns ? 'Every right answer sent a lantern up.'
+                        : 'Lóng nods — the story is safe with you.', 160, 104, 5.6, '#cfc0a8','center');
+        T('✓ or click to continue', 160, 118, 5.4, '#9a8c78','center');
+        cx.restore();
+        return;
+      }
+
+      const Q = q(), n = Q.a.length;
+
+      /* ---- question card ---- */
+      const ql = wrap(Q.q, 258, 6.2);
+      box(26, 40, 268, ql.length*9+10);
+      let yy = 45; for (const ln of ql){ T(ln, 160, yy, 6.2, '#f4e8d0','center'); yy += 9; }
+
+      /* ---- answers ---- */
+      for (let i=0;i<n;i++){
+        const r = rowRect(i,n);
+        const gone = st.dead.includes(i);
+        const on = (i===st.sel || i===st.hover) && !gone;
+        box(r.x, r.y, r.w, r.h, {
+          border: gone ? '#3a3040' : on ? '#f2b632' : '#6a5a48',
+          bg:     gone ? 'rgba(14,10,18,0.75)' : on ? 'rgba(60,36,20,0.95)' : 'rgba(20,12,16,0.85)'
+        });
+        const letter = ['A','B','C','D'][i];
+        R(r.x+3, r.y+2, 9, 9, gone ? '#2a2430' : on ? '#f2b632' : '#4a3a3e');
+        T(letter, r.x+7.5, r.y+3.4, 5.4, gone ? '#6a5a68' : on ? '#2b1a26' : '#cfc0a8', 'center');
+        T(Q.a[i], r.x+17, r.y+3.4, 6.2, gone ? '#5a4e58' : on ? '#ffe9b0' : '#cfc0a8');
+        if (gone){
+          for (let k=0;k<r.w;k+=4) R(r.x+k, r.y+r.h/2, 3, 1.4, 'rgba(255,138,112,0.45)');
+          T('burned away', r.x+r.w-4, r.y+3.4, 5, '#8a5a58', 'right');
+        }
+      }
+
+      /* ---- Lóng's lantern timer + streak ---- */
+      /* timer + streak band, always in the same place */
+      const left = clamp(1 - st.time/st.limit, 0, 1);
+      T("Lóng's lantern", 40, 142, 5, '#9a8c78');
+      R(40, 149, 168, 7, 'rgba(20,12,16,0.85)');
+      R(40, 149, 168*left, 7, left > 0.45 ? '#7ce87c' : left > 0.2 ? '#f2b632' : '#ff8a70');
+      R(40, 149, 168, 1, '#4a3a3e');
+      if (st.state === 'ask' && left < 0.25) T('hint coming…', 212, 150, 5, '#ffd0a0');
+      if (st.streak >= 2){
+        R(220, 140, 62, 16, 'rgba(242,182,50,0.18)');
+        R(220, 140, 62, 1, '#f2b632');
+        T('STREAK ×'+st.streak, 251, 144, 5.6, '#ffe9b0','center');
+      }
+      T('click an answer  ·  or ▲▼ and ✓', 160, 172, 5.2, '#9a8c78','center');
+      T((st.idx+1)+' / '+questions.length, 300, 172, 5.2, '#9a8c78','center');
+
+      if (st.hintT > 0 && st.state === 'ask'){
+        box(72, 122, 176, 15, {border:'#ffd964'});
+        T('Lóng burned away a wrong answer!', 160, 126, 5.8, '#ffe98a','center');
+      }
+
+      /* the result reads as a panel laid over the board, so nothing collides */
+      if (st.state === 'right' || st.state === 'wrong'){
+        cx.globalAlpha = 0.62; R(0,0,LW,LH,'#0c0a14'); cx.globalAlpha = 1;
+        if (st.state === 'right'){
+          const yl = wrap(Q.yay, 236, 5.8);
+          const h = yl.length*8 + 34;
+          box(34, 90-h/2+20, 252, h, {border:'#7ce87c'});
+          let y2 = 90-h/2+26;
+          T('CORRECT', 160, y2, 8, '#7ce87c','center'); y2 += 14;
+          for (const ln of yl){ T(ln, 160, y2, 5.8, '#c8f4c0','center'); y2 += 8; }
+          T('✓ or click to go on', 160, y2+4, 5, '#9a8c78','center');
+        } else {
+          box(48, 92, 224, 42, {border:'#ff8a70'});
+          T('NOT THAT ONE', 160, 98, 8, '#ff8a70','center');
+          T('think again — that answer is out now', 160, 112, 5.8, '#ffd0c0','center');
+          T('✓ or click to retry', 160, 122, 5.2, '#cfc0a8','center');
+        }
+      }
+
+      if (st.flash>0){ cx.globalAlpha = st.flash*0.4; R(0,0,LW,LH,'#ffe98a'); cx.globalAlpha = 1; }
+      cx.restore();
     }
   };
 }
@@ -3671,10 +5196,299 @@ function drawCouplet(x, y, w, h, vertical, chars){
   }
 }
 /* ============================================================
+   BRIEFING CARDS — every game explains itself before it starts:
+   what the tradition is, the numbered steps you will actually
+   do, and the controls. Nothing starts until you press GOT IT.
+   ============================================================ */
+/* the font has no arrow glyphs, so draw them as real pixels: 7x7 box */
+function arrowGlyph(x, y, dir, color){
+  if (dir === 'U') for (let i=0;i<4;i++) R(x+3-i, y+1+i, 1+2*i, 1, color);
+  if (dir === 'D') for (let i=0;i<4;i++) R(x+i,   y+1+i, 7-2*i, 1, color);
+  if (dir === 'L') for (let i=0;i<4;i++) R(x+1+i, y+3-i, 1, 1+2*i, color);
+  if (dir === 'R') for (let i=0;i<4;i++) R(x+1+i, y+i,   1, 7-2*i, color);
+}
+/* label may be plain text, or '#LRUD' to draw arrow keys */
+function keyBadge(x, y, label, w){
+  const glyphs = label[0] === '#' ? label.slice(1).split('') : null;
+  const bw = w || (glyphs ? glyphs.length*8 + 4 : textW(label, 5.4) + 8);
+  R(x-1, y-1, bw+2, 13, '#2b1a26');
+  R(x, y, bw, 11, '#4a3a4e');
+  R(x, y, bw, 2, '#6a5a6e');
+  R(x, y+9, bw, 2, '#2b1a26');
+  if (glyphs){
+    let gx = x + (bw - (glyphs.length*8 - 1))/2;
+    for (const g of glyphs){ arrowGlyph(gx, y+2, g, '#ffe9b0'); gx += 8; }
+  } else T(label, x+bw/2, y+2.6, 5.4, '#ffe9b0', 'center');
+  return bw;
+}
+/* a small numbered chip for the step list */
+function stepChip(x, y, n, accent){
+  R(x, y, 9, 9, accent);
+  R(x, y, 9, 1, '#ffe9b0');
+  T(String(n), x+4.5, y+1.6, 5.2, '#2b1a26', 'center');
+}
+/* cfg: { title, sub, what:[], steps:[], extra:[], keys:[[key,meaning]], art(t), color } */
+const BTN = { x: 111, y: 150, w: 98, h: 16 };
+function makeBriefing(cfg, makeScene){
+  let t = 0;
+  return {
+    usesDash: true,
+    enter(){ window.INBRIEF = true; },
+    update(dt){
+      t += dt; updateParts(dt);
+      const hit = clickIn(BTN.x, BTN.y, BTN.w, BTN.h);
+      if ((just.a || just.dash || hit) && t > 0.35){
+        SFX.select(); window.INBRIEF = false; popScene(); pushScene(makeScene());
+      }
+    },
+    render(){
+      R(0,0,LW,LH,'#140f22');
+      for (let i=0;i<40;i++){ const h=thash(i,5); R(h*LW, thash(i,11)*LH, 1, 1, 'rgba(232,228,244,0.35)'); }
+      const accent = cfg.color || '#f2b632';
+      box(12, 4, 296, 172, { border: accent, bg:'rgba(18,12,24,0.96)' });
+      Tsh(cfg.title, LW/2, 8, 8.6, accent, 'center');
+      if (cfg.sub) T(cfg.sub, LW/2, 18, 5, '#cfc0a8', 'center');
+      R(20, 27, 280, 1, accent);
+
+      /* ---------- left column: picture, then controls ---------- */
+      R(20, 31, 80, 52, 'rgba(0,0,0,0.4)');
+      R(20, 31, 80, 1, 'rgba(255,255,255,0.14)');
+      cx.save();
+      cx.beginPath(); cx.rect(20*P, 31*P, 80*P, 52*P); cx.clip();
+      if (cfg.art) cfg.art(t);
+      cx.restore();
+
+      T('CONTROLS', 20, 88, 5, accent);
+      R(20, 95, 80, 1, 'rgba(255,255,255,0.14)');
+      let ky = 100;
+      for (const [k, meaning] of (cfg.keys || [])){
+        if (k){ keyBadge(20, ky-1, k, 34); T(meaning, 58, ky, 4.8, '#cfc0a8'); }
+        else T(meaning, 24, ky, 4.6, '#8a7c6a');
+        ky += 12;
+      }
+
+      /* ---------- right column: what it is, then the steps ---------- */
+      const RX = 108;
+      let yy = 32;
+      for (const line of (cfg.what || [])){ T(line, RX, yy, 5.2, '#f4e8d0'); yy += 8.4; }
+
+      if (cfg.steps && cfg.steps.length){
+        yy += 3;
+        T('HOW TO PLAY', RX, yy, 5, accent); yy += 7;
+        R(RX, yy, 192, 1, 'rgba(255,255,255,0.14)'); yy += 4;
+        cfg.steps.forEach((s, i)=>{
+          stepChip(RX, yy-1, i+1, accent);
+          T(s, RX+13, yy+0.6, 5.0, '#e8dcc4');
+          yy += 10.4;
+        });
+      }
+
+      /* ---------- the note (lives, pickups) — only if it fits ---------- */
+      if (cfg.extra){
+        const h = cfg.extra.length*7.6 + 6;
+        if (yy + h <= 147){
+          R(RX, yy, 192, h, 'rgba(242,182,50,0.12)');
+          R(RX, yy, 192, 1, 'rgba(242,182,50,0.45)');
+          let ey = yy + 4;
+          for (const line of cfg.extra){ T(line, RX+3, ey, 4.6, '#ffe9b0'); ey += 7.6; }
+        }
+      }
+
+      /* ---------- GOT IT ---------- */
+      const hov = hoverIn(BTN.x, BTN.y, BTN.w, BTN.h);
+      const pulse = hov || Math.sin(t*4) > 0;
+      R(BTN.x-2, BTN.y-2, BTN.w+4, BTN.h+4, '#2b1a26');
+      R(BTN.x, BTN.y, BTN.w, BTN.h, pulse ? accent : '#a8792a');
+      R(BTN.x, BTN.y, BTN.w, 2, '#ffe9b0');
+      R(BTN.x, BTN.y+BTN.h-2, BTN.w, 2, 'rgba(0,0,0,0.3)');
+      T('GOT IT!', LW/2, BTN.y+4, 7.4, '#2b1a26', 'center');
+      T('click, or ✓ / SPACE', LW/2, BTN.y+18, 4.4, '#8a7c6a', 'center');
+      drawParts(0,0);
+    }
+  };
+}
+/* ============================================================
+   BRIEFING CONTENT — one card per game
+   Each card teaches the real tradition, lists the steps you
+   will actually do, then the controls.
+   ============================================================ */
+const BRIEF = {
+  sweep: {
+    title:'OUT WITH THE OLD LUCK', sub:"Auntie Hua's big sweep", color:'#c8a860',
+    what:['Before the new year, families clean the whole',
+          'house to sweep out last year’s bad luck — huì',
+          'qì. Sweep AFTER new year and you would brush',
+          'the fresh luck out too, so it all happens now.'],
+    steps:['Walk up to a dust sprite and sweep it',
+           'Herd all 6 out the open front door',
+           'Their King wakes up — sweep him 8 times',
+           'He hides behind dust: clear it, then hit'],
+    keys:[['#LRUD','move'],
+          ['CLICK','sweep'],
+          ['SPACE','dash']],
+    extra:['Sprites RUN from the broom — come at them from',
+           'behind so every sweep pushes them doorward.'],
+    art(t){ drawDust(52, 62, 6, t, 1, false); drawDust(78, 78, 5, t, 3, false);
+            drawBroom(58, 84, 0.3, (Math.sin(t*3)+1)/2); }
+  },
+  door: {
+    title:"UNCLE BO'S DOOR", sub:'write it, hang it, flip it', color:'#e05a44',
+    what:['Spring couplets (chūnlián) carry good wishes',
+          'onto every door of the house, written in ink',
+          'on red paper. The character fú means “good',
+          'fortune” — and it goes on last.'],
+    steps:['WRITE fú: drag the brush down each stroke',
+           'HANG both couplets level on the doorposts',
+           'TURN the fú… which way up? think first',
+           'Upside down = “fortune has ARRIVED”'],
+    keys:[['HOLD','drag brush'],
+          ['#LRUD','place / turn'],
+          ['CLICK','paste it']],
+    art(t){ R(40, 42, 52, 42, '#f7edd6'); hanzi('福', 66, 63, 28, 'rgba(120,100,90,0.25)');
+            cx.save(); cx.beginPath(); cx.rect(40*P, 42*P, 52*P, (10+((t*14)%32))*P); cx.clip();
+            hanzi('福', 66, 63, 28, '#241a20'); cx.restore(); }
+  },
+  dumpling: {
+    title:'DUMPLING KITCHEN', sub:"Mei's reunion dinner", color:'#f2b632',
+    what:['Jiǎozi are folded to look like ancient gold',
+          'ingots — a wish for a rich year. The whole',
+          'family folds them together on New Year’s Eve,',
+          'and Granny hides a coin in one of them.'],
+    steps:['ROLL: run the pin over all 5 thick spots',
+           'FILL: hold to spoon in — stop in the green',
+           'PLEAT: press as the finger passes each mark',
+           'Repeat for 3 dumplings — they get faster'],
+    keys:[['#LR','roll / crimp'],
+          ['HOLD ✓','spoon filling'],
+          ['✓ CLICK','pinch a pleat']],
+    art(t){ drawTable(34, 84, 68); drawDumpling(52, 74, 2); drawDumpling(80, 78, 1.4);
+            R(60, 56+Math.sin(t*3)*2, 3, 14, '#8a6a48'); }
+  },
+  zongzi: {
+    title:'ZONGZI WRAP-OFF', sub:'Granny Zhu is watching', color:'#3f9450',
+    what:['Villagers threw rice into the river so the fish',
+          'would eat that instead of the drowned poet Qu',
+          'Yuan. That rice became zòngzi: sticky rice in',
+          'bamboo leaves, still eaten every Dragon Boat.'],
+    steps:['FOLD the leaf to the marked cone angle',
+           'FILL with sticky rice up to the green line',
+           'TIE: click each time the string hits a mark',
+           'Three zongzi, then into the pot'],
+    keys:[['#LR','fold angle'],
+          ['HOLD ✓','pour rice'],
+          ['CLICK','tie a knot']],
+    art(t){ drawZongzi(64, 66, 2.6); R(40, 84, 50, 4, '#6a4a34'); }
+  },
+  boat: {
+    title:'DRAGON BOAT RACE', sub:'row for Qu Yuan', color:'#4a90c2',
+    what:['When Qu Yuan drowned, villagers raced out in',
+          'boats beating drums and splashing oars to',
+          'scare the fish away. Every race since is a',
+          're-enactment of that dash to save him.'],
+    steps:['ONE stroke per drum beat — never mash',
+           'Alternate ◀ then ▶, left, right, left…',
+           'Steer ▲▼ around rocks, logs and whirlpools',
+           'Grab zongzi for stamina, SPACE to surge'],
+    keys:[['#LR','paddle'],
+          ['#UD','change lane'],
+          ['SPACE','surge']],
+    extra:['Hitting the beat exactly is worth 5× a lazy',
+           'stroke — listen to the drum, do not watch it.'],
+    art(t){ R(24, 66, 84, 24, '#3a7ab2'); drawBoat(66, 70, t, {crew:true, fast:true}); }
+  },
+  mooncake: {
+    title:'MOONCAKE BAKERY', sub:'Baker Fang needs a hand', color:'#e0a83c',
+    what:['Mooncakes are round like the full moon and',
+          'stand for tuányuán — the whole family back in',
+          'one place. One cake is cut into slices so that',
+          'every single person gets a share.'],
+    steps:['PRESS every wedge of dough flat and even',
+           'FILL with lotus paste — stop in the green',
+           'Drop the salted yolk dead in the CENTRE',
+           'STAMP: line up the mould, press, let go',
+           'BAKE: egg wash, then pull it out at GOLDEN'],
+    keys:[['MOVE','palm / yolk'],
+          ['HOLD','press, pour'],
+          ['#LR','turn mould']],
+    art(t){ drawMooncake(60, 60, 2.2); glow(60, 60, 20, '#ffd964', 0.2);
+            R(30, 74, 60, 4, '#6a4c30'); drawMooncake(40, 78, 1.1); drawMooncake(80, 78, 1.1); }
+  },
+  nian: {
+    title:'NIAN AT THE GATES', sub:'the New Year’s Eve boss', color:'#e03c28',
+    what:['Nian crawls out of the sea every New Year’s',
+          'Eve to eat the village. It fears three things:',
+          'the colour red, bright light, and loud noise —',
+          'and food left out, so it fills its belly.'],
+    steps:['Throw dumplings — aim with the cursor',
+           'DASH through fire: you are briefly untouchable',
+           'It rages TWICE as its health drops — new attacks',
+           'Pop the cubs it calls up before they swarm'],
+    keys:[['CLICK','throw'],
+          ['SPACE','dash'],
+          ['#LRUD','move']],
+    extra:['5 lanterns = your lives. Cubs sometimes drop a',
+           'RED ENVELOPE — grab it for +1 lantern back.'],
+    art(t){ drawNian(58, 84, t); }
+  },
+  poison: {
+    title:'THE FIVE POISONS', sub:'fifth day of the fifth month', color:'#7ad24a',
+    what:['Deep summer wakes the “five poisons”: snake,',
+          'scorpion, centipede, toad and spider. This is',
+          'exactly why families hang mugwort over the',
+          'door and tie sachets on their children.'],
+    steps:['Swing the mugwort bundle toward the cursor',
+           'Clear all 3 waves of crawling poisons',
+           'The Wǔ Dú King rises — keep swinging',
+           'Save the ✕ sachet for when you are swarmed'],
+    keys:[['CLICK','swing'],
+          ['✕','sachet'],
+          ['SPACE','dash']],
+    extra:['5 sprigs = your lives. Clearing a wave gives one',
+           'back, and Granny refills you before the King.'],
+    art(t){ drawScorpion(48, 58, t, 0); drawSnake(84, 78, t, 0); }
+  },
+  quiz: {
+    title:'LÓNG’S STORY CHECK', sub:'prove you were listening', color:'#f2b632',
+    what:['A keeper of stories has to KNOW the stories.',
+          'Answer Lóng’s questions about what you just',
+          'lived through. A wrong answer costs nothing',
+          'but pride — you can always try again.'],
+    steps:['Read the question, click the answer you want',
+           'Wrong answers are crossed out, not fatal',
+           'Run the lantern timer down and Lóng burns',
+           'away a wrong option for you — a free hint'],
+    keys:[['CLICK','pick answer'],
+          ['#UD','choose'],
+          ['✓','lock it in']],
+    art(t){ drawPortraitCard(38, 46, LONG_PORTRAIT); }
+  },
+  riddle: {
+    title:'LANTERN RIDDLES', sub:'the oldest Mid-Autumn game', color:'#cfe4f4',
+    what:['On lantern nights riddles are written on slips',
+          'and hung from the lanterns; solve one and the',
+          'lantern is yours. Whole streets play it — this',
+          'game is over a thousand years old.'],
+    steps:['Four riddles, one lantern each',
+           'Click your answer, or ▲▼ then ✓',
+           'Every riddle you get FIRST TRY keeps a streak',
+           'Watch your lanterns rise over the village'],
+    keys:[['CLICK','pick answer'],
+          ['#UD','choose'],
+          ['✓','lock it in']],
+    art(t){ drawLantern(46, 48, 1.5, true, t); drawLantern(78, 58, 1.2, true, t+1.2); }
+  },
+};
+/* push a game behind its briefing card */
+function startGame(key, makeScene){
+  pushScene(makeBriefing(BRIEF[key], makeScene));
+}
+/* ============================================================
    STORY — title, home, cutscenes, journal, chapter cards
    ============================================================ */
 
 /* ---------- title screen ---------- */
+/* clickable band for menu row i */
+function titleRow(i){ return { x: LW/2-62, y: 93+i*13, w: 124, h: 13 }; }
 const titleScene = {
   sel:0,
   enter(){ playMusic(0); this.save = loadGame(); },
@@ -3683,7 +5497,13 @@ const titleScene = {
     const opts = this.menu();
     if (just.up){ this.sel=(this.sel+opts.length-1)%opts.length; SFX.blip(); }
     if (just.down){ this.sel=(this.sel+1)%opts.length; SFX.blip(); }
-    if (just.a){
+    let picked = false;
+    for (let i=0;i<opts.length;i++){
+      const r = titleRow(i);
+      if (hoverIn(r.x, r.y, r.w, r.h) && this.sel !== i){ this.sel = i; SFX.blip(); }
+      if (clickIn(r.x, r.y, r.w, r.h)){ this.sel = i; picked = true; }
+    }
+    if (just.a || picked){
       SFX.select();
       const o = opts[this.sel];
       if (o==='NEW GAME'){
@@ -3721,11 +5541,17 @@ const titleScene = {
     // menu
     const opts = this.menu();
     opts.forEach((o,i)=>{
-      const y = 96+i*13;
-      if (i===this.sel){ T('❯', LW/2-textW(o,7)/2-10, y, 7, '#f2b632','left'); }
+      const y = 96+i*13, r = titleRow(i);
+      if (i===this.sel){
+        R(r.x, r.y, r.w, r.h, 'rgba(242,182,50,0.16)');
+        R(r.x, r.y, r.w, 1, 'rgba(242,182,50,0.5)');
+        R(r.x, r.y+r.h-1, r.w, 1, 'rgba(242,182,50,0.5)');
+        T('❯', LW/2-textW(o,7)/2-10, y, 7, '#f2b632','left');
+      }
       Tsh(o, LW/2, y, 7, i===this.sel?'#ffe9b0':'#b8a88e', 'center');
     });
-    T('ARROWS/WASD move · ✓=Z/ENTER · SPACE dash · ✕=X · J journal · M mute', LW/2, 170, 4.6, '#8a7c6a', 'center');
+    T('click a button, or ARROWS + ✓ (Z/ENTER)', LW/2, 152, 5, '#cfc0a8', 'center');
+    T('E interact · SPACE dash · CLICK to attack · J journal · M mute', LW/2, 170, 4.6, '#8a7c6a', 'center');
     drawFade();
   }
 };
@@ -4014,6 +5840,11 @@ const changePages = [
 ];
 
 /* ---------- journal & sources ---------- */
+/* clickable band for journal row i */
+function jRow(i){
+  const perCol = 9, colW = 140;
+  return { x: 23+Math.floor(i/perCol)*colW, y: 38.5+(i%perCol)*13, w: colW-8, h: 12 };
+}
 function makeJournal(){
   let sel=0, mode='list', page=0;
   const entries = SCROLL_ORDER.map(id=>({id, got:G.scrolls.includes(id)}));
@@ -4021,17 +5852,23 @@ function makeJournal(){
     overlay:true,
     update(dt){
       if (mode==='read'){
-        if (just.a || just.b){ mode='list'; SFX.back(); }
+        if (just.a || just.b || just.click){ mode='list'; SFX.back(); }
         return;
       }
       if (mode==='sources'){
-        if (just.a || just.b){ mode='list'; SFX.back(); }
+        if (just.a || just.b || just.click){ mode='list'; SFX.back(); }
         return;
       }
       const n = entries.length+1;
       if (just.up){ sel=(sel+n-1)%n; SFX.blip(); }
       if (just.down){ sel=(sel+1)%n; SFX.blip(); }
-      if (just.a){
+      let hit = false;
+      for (let i=0;i<n;i++){
+        const r = jRow(i);
+        if (hoverIn(r.x, r.y, r.w, r.h) && sel !== i){ sel = i; SFX.blip(); }
+        if (clickIn(r.x, r.y, r.w, r.h)){ sel = i; hit = true; }
+      }
+      if (just.a || hit){
         if (sel===entries.length){ mode='sources'; SFX.select(); }
         else if (entries[sel].got){ mode='read'; SFX.select(); }
         else SFX.bad();
@@ -4077,7 +5914,7 @@ function makeJournal(){
         if (i===sel){ R(x-3, y-1.5, colW-8, 12, 'rgba(242,182,50,0.2)'); T('▶', x-1, y, 5.4, '#f2b632'); }
         T(label, x+8, y, 5.4, isSrc ? '#ffd964' : entries[i].got ? '#f4e8d0' : '#6a5c50');
       }
-      T('▲▼ pick · ✓ read · ✕ close', LW/2, 162, 5, '#8a7c6a','center');
+      T('click a scroll, or ▲▼ and ✓  ·  ✕ close', LW/2, 162, 5, '#8a7c6a','center');
     }
   };
 }
@@ -4156,17 +5993,18 @@ const creatorScene = {
       if (just.right) this.cycle(row,1);
       if (just.a && !tapPos) this.cycle(row,1);
     } else if (just.a && !tapPos){ this.finish(); return; }
-    // touch: tap a row to cycle it, tap START to go
-    if (tapPos){
-      for (let i=0;i<CC_ROWS.length;i++){
-        const y = 30+i*17;
-        if (tapPos.y>y-4 && tapPos.y<y+16 && tapPos.x>100){
-          this.sel = i;
-          if (CC_ROWS[i]==='start') this.finish();
-          else this.cycle(CC_ROWS[i], 1);
-          break;
-        }
+    // mouse / touch: hover picks the row, the ◀ ▶ chips change it
+    for (let i=0;i<CC_ROWS.length;i++){
+      const y = 30+i*17, key = CC_ROWS[i];
+      if (key==='start'){
+        if (hoverIn(158, y-2, 96, 15) && this.sel!==i){ this.sel = i; SFX.blip(); }
+        if (clickIn(158, y-2, 96, 15)){ this.sel = i; this.finish(); return; }
+        continue;
       }
+      if (hoverIn(104, y-3, 198, 15) && this.sel!==i){ this.sel = i; SFX.blip(); }
+      if (clickIn(152, y-3, 16, 15)){ this.sel = i; this.cycle(key,-1); return; }
+      if (clickIn(288, y-3, 16, 15)){ this.sel = i; this.cycle(key, 1); return; }
+      if (clickIn(168, y-3, 120, 15)){ this.sel = i; this.cycle(key, 1); return; }
     }
   },
   render(){
@@ -4188,13 +6026,15 @@ const creatorScene = {
       const key = CC_ROWS[i], y = 30+i*17, on = i===this.sel;
       if (key==='start'){
         const w = 96;
-        box(180-w/2+26, y-2, w, 15, {border: on?'#f2b632':'#6a5a48', bg: on?'rgba(90,40,20,0.9)':'rgba(20,12,16,0.85)'});
+        box(158, y-2, w, 15, {border: on?'#f2b632':'#6a5a48', bg: on?'rgba(90,40,20,0.9)':'rgba(20,12,16,0.85)'});
         T('✦ START! ✦', 206, y+1, 7, on?'#ffe9b0':'#b8a88e','center');
         continue;
       }
       const o = CC_OPTS[key];
+      if (on) R(104, y-3, 198, 15, 'rgba(242,182,50,0.12)');
       T(o.label, 106, y, 5.2, on?'#f2b632':'#8a7c6a');
-      if (on){ T('◀', 158, y+1, 6, '#f2b632'); T('▶', 298, y+1, 6, '#f2b632','right'); }
+      arrowGlyph(154, y+1, 'L', on?'#f2b632':'#6a5a48');
+      arrowGlyph(291, y+1, 'R', on?'#f2b632':'#6a5a48');
       if (o.swatch){
         const v = o.vals[this.idx[key]];
         R(170, y-1, 11, 11, '#2b1a26'); R(171, y, 9, 9, v);
@@ -4203,7 +6043,7 @@ const creatorScene = {
         T(o.names[this.idx[key]], 170, y+1, 6.4, on?'#ffe9b0':'#cfc0a8');
       }
     }
-    T('▲▼ pick a row · ◀▶ change it · then START!', LW/2, 166, 5.2, '#9a8c78','center');
+    T('click the arrows to change a row  ·  or use the ARROW KEYS  ·  then START!', LW/2, 166, 5.2, '#9a8c78','center');
     drawFade();
   }
 };
@@ -4306,7 +6146,7 @@ function chapterTick(dt){
       {who:'Mei', port:NPCS.mei.look, text:"WAIT! Take my dumpling basket! In the old stories, villagers left food at their doors so Nian would fill its belly instead of biting THEM."},
       {who:'Mei', port:NPCS.mei.look, text:"So let's see how it likes them… FLYING. Throw with ✓, dash with SPACE. GO GO GO!"},
     ], ()=>{
-      fadeOut(()=>{ pushScene(makeNianBattle()); fadeIn(); });
+      fadeOut(()=>{ startGame('nian', ()=> makeNianBattle()); fadeIn(); });
     });
   }
   if (G.ch===2 && G.step===0 && !G.flags.ch2intro){
@@ -4355,7 +6195,7 @@ const talks = {
       if (G.step===7){
         say([
           {who:'Lóng', port:L, text:"One more thing. A keeper of stories must KNOW the stories. Quick check — ready?"},
-        ], ()=> pushScene(makeQuiz(QUIZ_CH1, {title:'LÓNG\'S STORY CHECK', sub:'Chapter One', moon:false}, ()=>{
+        ], ()=> startGame('quiz', ()=> makeQuizGame(QUIZ_CH1, {title:'LÓNG\'S STORY CHECK', sub:'Chapter One', moon:false}, ()=>{
           ceremony('t1', [
             {who:'Lóng', port:L, text:"PERFECT! Look — the RED LANTERN remembers its light!"},
             {who:'Lóng', port:L, text:"And it will burn for FIFTEEN days — all the way to the Lantern Festival at the first full moon, with lion dances and parades."},
@@ -4382,7 +6222,7 @@ const talks = {
       if (G.step===6){
         say([
           {who:'Lóng', port:L, text:"Story check, river edition! Ready?"},
-        ], ()=> pushScene(makeQuiz(QUIZ_CH2, {title:'LÓNG\'S STORY CHECK', sub:'Chapter Two', moon:false}, ()=>{
+        ], ()=> startGame('quiz', ()=> makeQuizGame(QUIZ_CH2, {title:'LÓNG\'S STORY CHECK', sub:'Chapter Two', moon:false}, ()=>{
           ceremony('t2', [
             {who:'Lóng', port:L, text:"YES! Hear that? The DRAGON DRUM beats on its own again!"},
             {who:'Lóng', port:L, text:"And here's something even Captain Yu forgets: in 2009 this festival became the FIRST Chinese festival on UNESCO's world heritage list. The whole world guards this story now."},
@@ -4409,7 +6249,7 @@ const talks = {
       if (G.step===5){
         say([
           {who:'Lóng', port:L, text:"Almost there. On Mid-Autumn night we hang RIDDLES from lanterns — answer one, and a lantern rises. Shall we play the oldest game?"},
-        ], ()=> pushScene(makeQuiz(RIDDLES, {title:'LANTERN RIDDLES', sub:'answer & watch them rise', moon:true, lanterns:true}, ()=>{
+        ], ()=> startGame('riddle', ()=> makeQuizGame(RIDDLES, {title:'LANTERN RIDDLES', sub:'answer & watch them rise', moon:true, lanterns:true}, ()=>{
           G.flags.moonlit = true;
           ceremony('t3', [
             {who:'Lóng', port:L, text:"LOOK UP!"},
@@ -4472,7 +6312,7 @@ const talks = {
       {who:'Auntie Hua', port:H, text:"And I do mean BAD LUCK. Huì Qì. It builds up in the corners all year, and if you let it, it grows… legs."},
       {who:G.name, port:playerLook(), text:"…Legs?"},
       {who:'Auntie Hua', port:H, text:"BROOM. NOW. Sweep every last one out that door — and mind their king. He bites. Mostly he sneezes."},
-    ], ()=> pushScene(makeSweepBattle(()=>{
+    ], ()=> startGame('sweep', ()=> makeSweepBattle(()=>{
       say([
         {who:'Auntie Hua', port:H, text:"HA! Look at him roll! That is a YEAR of bad luck out my door."},
         {who:'Auntie Hua', port:H, text:"Now remember the OTHER half of the rule: tomorrow, the broom RESTS."},
@@ -4488,7 +6328,7 @@ const talks = {
       say([
         {who:'Uncle Bo', port:B, text:"Perfect timing! Help me dress this door. Chunlian — spring couplets. Little poems of good wishes, one for each side."},
         {who:'Uncle Bo', port:B, text:"But first you WRITE. No shop paper in my house. Brush, ink, and a steady hand — let's see yours."},
-      ], ()=> pushScene(makeDoorGame(()=>{
+      ], ()=> startGame('door', ()=> makeDoorGame(()=>{
         say([
           {who:'Uncle Bo', port:B, text:"HA! Look at that door. Best on the whole street, and the fu hanging on its head like a happy bat."},
           {who:'Uncle Bo', port:B, text:"Word-play, kid. Five thousand years of dad jokes, and every single one of them still working."},
@@ -4504,7 +6344,7 @@ const talks = {
       if (G.step===4) say([
         {who:'Mei', port:M, text:G.name+"! You're just in time — tonight is the REUNION DINNER. The whole family cooks together. It's the best part of the whole year."},
         {who:'Mei', port:M, text:"We're making jiǎozi — dumplings! I'll teach you my grandmother's fold. Ready?"},
-      ], ()=> pushScene(makeSequence(MG_DUMPLING, ()=>{
+      ], ()=> startGame('dumpling', ()=> makeDumplingGame(()=>{
         say([
           {who:'Mei', port:M, text:"LOOK at them! Fat and golden — folded like the old gold ingots. That's the wish: a year of plenty."},
           {who:'Mei', port:M, text:"And see the whole fish on the table? 'Nián nián yǒu yú' — 'fish' sounds like 'extra,' so it means may EVERY year have extra. Food that talks!"},
@@ -4538,7 +6378,7 @@ const talks = {
       else if (G.step===5) say([
         {who:'Captain Yu', port:Y, text:"The story's back in their eyes. The zongzi are wrapped. The herbs are hung. CREW! TO THE BOATS!"},
         {who:'Captain Yu', port:Y, text:"You — lead boat, drum position. Paddle with the beat and make it THUNDER, like the villagers did for Qu Yuan!"},
-      ], ()=> pushScene(makeRhythm(()=>{
+      ], ()=> startGame('boat', ()=> makeBoatRace(()=>{
         say([
           {who:'Captain Yu', port:Y, text:"HAAAA! THAT is how you honor a poet! Twenty-three hundred years and the river still remembers his name!"},
         ], ()=> setStep(6));
@@ -4569,7 +6409,7 @@ const talks = {
       if (G.step===2) say([
         {who:'Granny Zhu', port:Z, text:"Racing is hungry work! Come, help me wrap zòngzi — sticky rice bundled in bamboo leaves. Rice armor!"},
         {who:'Granny Zhu', port:Z, text:"Just like the rice the villagers threw to keep the fish away from Qu Yuan. Fold, pack, tie. Show me your hands. Hm. They'll do."},
-      ], ()=> pushScene(makeSequence(MG_ZONGZI, ()=>{
+      ], ()=> startGame('zongzi', ()=> makeZongziGame(()=>{
         say([
           {who:'Granny Zhu', port:Z, text:"Not bad, not bad! In the NORTH they fill them sweet, with dates. Here in the south? Pork and salted egg yolk."},
           {who:'Granny Zhu', port:Z, text:"Every family swears theirs is the true zongzi. The arguing is HALF the tradition. Now — I need mugwort from the riverbank. Three good sprigs!"},
@@ -4590,28 +6430,7 @@ const talks = {
       say([
         {who:'Baker Fang', port:F, text:"The moon may be shy tonight, but MY ovens are not! We bake mooncakes — golden, round, and packed with meaning."},
         {who:'Baker Fang', port:F, text:"Lotus paste, a salted egg yolk hidden inside like a little full moon, and the mold pressed at JUST the right moment. Ready? The dough waits for no one!"},
-      ], ()=> pushScene(makeTiming({
-        title:'MOONCAKE BAKERY', flavor:'Press at the perfect moment!',
-        roundLabels:['Press the dough into the mold…','Tuck in the salted egg yolk…','STAMP the pattern — now!'],
-        speeds:[2.0,2.6,3.2], zones:[32,25,19],
-        doneTitle:'GOLDEN!', doneLine:'A tray of perfect mooncakes, stamped and shining!',
-        onHit(r){ SFX.sparkle(); },
-        drawScene(progress,t,done){
-          R(0,0,LW,LH,'#4a3424');
-          for(let i=0;i<LW;i+=24) R(i,0,1,LH,'rgba(0,0,0,0.12)');
-          R(0,104,LW,76,'#8a6844'); R(0,104,LW,4,'#a88054');
-          // oven
-          R(240,60,54,44,'#5a4438'); R(248,74,38,22,'#2a1a12');
-          glow(267,85,14,'#ff7030',0.4+Math.sin(t*6)*0.1);
-          R(250,76,34,4,'#ff9040');
-          // tray of mooncakes appears
-          R(60,96,80,6,'#6a4c30');
-          for(let i=0;i<progress;i++) drawMooncake(74+i*26, 92, 1.1);
-          if (done) for(let i=0;i<3;i++) glow(74+i*26, 92, 10, '#ffd964', 0.25);
-          drawPerson(180,140,{...port('fang'), dir:'left'},t);
-          drawPerson(140,146,{...playerLook(), dir:'right'},t);
-        }
-      }, ()=>{
+      ], ()=> startGame('mooncake', ()=> makeMooncakeGame(()=>{
         say([
           {who:'Baker Fang', port:F, text:"BEAUTIFUL. Round cakes for a 'round' family — tuányuán, reunion. One cake, cut in slices, so every single person shares it."},
           {who:'Baker Fang', port:F, text:"Now light the five lantern poles around the village! A feast needs light — and the moon could use the encouragement."},
@@ -4659,15 +6478,24 @@ function getInteractables(){
   }});
   // chapter items
   if (G.ch===2 && G.step===3){
-    MUGWORT.forEach((m,i)=>{
-      if (!G.flags['mug'+i]) list.push({x:m[0], y:m[1], r:18, label:'Pick mugwort', talk(){
-        G.flags['mug'+i]=true; SFX.sparkle();
-        burst(m[0], m[1]-6, ['#78d878','#57a862'], 12, 30);
-        const got = MUGWORT.filter((_,j)=>G.flags['mug'+j]).length;
-        if (got>=3) say([{who:'', text:'(Three fresh sprigs! Their sharp green smell clears your head. Back to Granny Zhu.)'}], ()=> setStep(4));
-        else say([{who:'', text:'(You pick a sprig of mugwort. '+got+' of 3.)'}]);
-      }});
-    });
+    const m = MUGWORT[1];
+    list.push({x:m[0], y:m[1], r:24, label:'Gather mugwort', talk(){
+      say([
+        {who:'', text:'(You kneel by the reeds and close your hand around a bundle of mugwort. The riverbank goes very, very quiet.)'},
+        {who:'Lóng', port:LONG_PORTRAIT, text:"…Little keeper. Do not move."},
+        {who:'Lóng', port:LONG_PORTRAIT, text:"Fifth day, fifth month. The hottest, sickest hour of the year — when the FIVE POISONS come out of the mud."},
+        {who:'Lóng', port:LONG_PORTRAIT, text:"Snake. Scorpion. Centipede. Toad. Spider. This is exactly why your family hangs mugwort over the door!"},
+        {who:'Lóng', port:LONG_PORTRAIT, text:"So SWING it. ✓ swings, ✕ bursts the sachet when it is full, SPACE dashes. GO!"},
+      ], ()=>{
+        fadeOut(()=>{ startGame('poison', ()=> makePoisonBattle(()=>{
+          G.flags.mug0 = G.flags.mug1 = G.flags.mug2 = true;
+          say([
+            {who:'Lóng', port:LONG_PORTRAIT, text:"HA! Look at them run for the water. THAT is what the herbs are for."},
+            {who:'', text:'(You gather three fat bundles of mugwort. Their sharp green smell clears your head. Back to Granny Zhu.)'},
+          ], ()=> setStep(4));
+        })); fadeIn(); });
+      });
+    }});
   }
   if (G.ch===3 && G.step===3){
     POLES.forEach((p,i)=>{
@@ -4715,7 +6543,7 @@ function makeNianBattle(){
     st.hearts--; st.inv = 1.5; st.shake = 0.55;
     SFX.bad(); noiseHit(0.3,0.4,true);
     burst(st.px, st.py-8, ['#ff8a70','#ffffff'], 18, 60);
-    if (st.hearts<=0){ st.mode='lose'; st.evT=0; }
+    if (st.hearts<=0){ st.deaths=(st.deaths||0)+1; st.mode='lose'; st.evT=0; }
   }
   function damageNian(n){
     if (st.invuln) return;
@@ -4747,7 +6575,7 @@ function makeNianBattle(){
   }
 
   return {
-    usesDash:true,
+    usesDash:true, aim:true,
     enter(){ playMusic(4); },
     update(dt){
       st.t += dt; st.evT += dt;
@@ -4804,11 +6632,13 @@ function makeNianBattle(){
       if (st.dashT>0) st.ghosts.push({x:st.px, y:st.py, t:0});
 
       // throw dumplings in the facing direction
-      if (just.a && st.throwCd<=0){
+      if ((just.a || just.click) && st.throwCd<=0){
         st.throwCd = 0.30;
-        const ax = st.dir==='left'?-1: st.dir==='right'?1:0;
-        const ay = st.dir==='up'?-1: st.dir==='down'?1:0;
-        st.dumps.push({ x:st.px+ax*8, y:st.py-8+ay*8, vx:ax*195, vy:ay*195 });
+        const aa = mouse.over ? aimAngle(st.px, st.py-8)
+                 : (st.dir==='left'?Math.PI: st.dir==='right'?0: st.dir==='up'?-Math.PI/2:Math.PI/2);
+        const ax = Math.cos(aa), ay = Math.sin(aa);
+        if (Math.abs(ax) > Math.abs(ay)) st.dir = ax<0?'left':'right'; else st.dir = ay<0?'up':'down';
+        st.dumps.push({ x:st.px+ax*8, y:st.py-8+ay*8, vx:ax*205, vy:ay*205 });
         noiseHit(0.05,0.1); tone(700,0.05,'sine',0.1);
       }
       for (const d of st.dumps){
@@ -4818,7 +6648,7 @@ function makeNianBattle(){
         }
         for (const im of st.imps){
           if (!im.dead && dist(d.x, d.y, im.x, im.y) < 9){
-            d.hit = true; im.hp--; dustPoof(im.x, im.y);
+            d.hit = true; im.hp--; burst(im.x, im.y, ['#48962c','#7cc93e','#ede0bc'], 10, 40); noiseHit(0.12,0.2);
             if (im.hp<=0){
               im.dead = true;
               if (Math.random()<0.6) st.drops.push({x:im.x, y:im.y, t:0});
@@ -4834,7 +6664,7 @@ function makeNianBattle(){
       for (const dp of st.drops){
         dp.t += dt;
         if (dist(dp.x, dp.y, st.px, st.py-8) < 12 && st.hearts < st.maxHearts){
-          dp.got = true; st.hearts++; SFX.sparkle(); say2('A red envelope! +1', '#7ce87c');
+          dp.got = true; st.hearts++; SFX.sparkle(); say2('A red envelope! +1 lantern', '#7ce87c');
         }
       }
       st.drops = st.drops.filter(dp=> !dp.got && dp.t < 14);
@@ -4871,7 +6701,7 @@ function makeNianBattle(){
               mdrum(0,0.6); st.shake=0.5; st.atk=null; st.atkCd = ph===3?1.8:1.9;
             } else if (A.kind==='summon'){
               for (let i=0;i<3;i++) st.imps.push({ x:st.nx+rnd(-16,16), y:st.ny-18+rnd(-12,12), hp:2, dead:false });
-              kingLaugh(); st.atk=null; st.atkCd = 1.9;
+              roarSfx(); st.atk=null; st.atkCd = 1.9;
             }
           }
         } else if (A.kind==='charge'){
@@ -4966,7 +6796,7 @@ function makeNianBattle(){
       }
       // depth-sorted actors
       const items = [];
-      for (const im of st.imps) items.push({y:im.y, f:()=> drawDust(im.x, im.y, 6, st.t, im.x, true)});
+      for (const im of st.imps) items.push({y:im.y, f:()=> drawNianCub(im.x, im.y, st.t, im.hp<2)});
       items.push({y:st.ny, f:()=>{
         drawNian(st.nx, st.ny, st.t);
         if (st.hurtT>0) glow(st.nx+2, st.ny-20, 30, '#ffffff', 0.4*(st.hurtT/0.25));
@@ -5015,7 +6845,7 @@ function makeNianBattle(){
       if (st.mode==='intro'){
         box(30, 66, 260, 48);
         T('NIAN ATTACKS THE VILLAGE!', LW/2, 72, 8, '#ff8a70','center');
-        T('◀▶▲▼ move · ✓ throw dumplings · SPACE dash', LW/2, 88, 5.6, '#ffe9b0','center');
+        T('ARROWS move · CLICK to throw at the cursor · SPACE dash', LW/2, 88, 5.6, '#ffe9b0','center');
         T('dashing makes you untouchable for a moment', LW/2, 99, 5, '#cfc0a8','center');
       } else if (st.mode==='win'){
         box(46,64,228,44);
@@ -5030,6 +6860,630 @@ function makeNianBattle(){
       if (st.msgT>0 && st.mode==='fight') T(st.msg, LW/2, 126, 7, st.msgC, 'center');
     }
   };
+}
+/* ============================================================
+   THE FIVE POISONS (五毒) — Dragon Boat Festival boss
+   The 5th day of the 5th month is the "poison month": families hang
+   mugwort and calamus to drive off snake, scorpion, centipede,
+   toad and spider. Here you fight them with a mugwort bundle.
+   ============================================================ */
+
+const PR = { x0:20, x1:300, y0:54, y1:158 };
+function hissSfx(){ noiseHit(0.26, 0.2); tone(210, 0.16, 'sawtooth', 0.12); }
+function swingSfx(){ noiseHit(0.13, 0.18); tone(430, 0.07, 'triangle', 0.12); tone(300, 0.09, 'sine', 0.1, 0.03); }
+function burstSfx(){ [520,660,830].forEach((f,i)=> tone(f, 0.22, 'triangle', 0.2, i*0.05)); noiseHit(0.3, 0.3); }
+
+/* ---------------- art ---------------- */
+function drawScorpion(x, y, t, hurt){
+  const sway = Math.sin(t*6)*1.4;
+  const B='#6a2a5a', B2='#8a3a72', B3='#a84a88', INKp='#1a1016';
+  ell(x, y+4, 11, 3, 'rgba(0,0,0,0.25)');
+  for (let i=0;i<4;i++){                                  // tail curling over the back
+    const a = -1.5 + i*0.42, r = 12 + i*1.5;
+    const sx = x - 9 + Math.cos(a)*r*0.5, sy = y - 6 - Math.sin(a)*r*0.55 + sway*0.4;
+    circle(sx, sy, 3.4-i*0.4, INKp); circle(sx, sy, 2.6-i*0.4, i%2?B2:B);
+  }
+  const stx = x - 4 + sway, sty = y - 20;
+  tri(stx-2.4, sty+2, stx, sty-4.6, stx+2.4, sty+2, INKp);
+  tri(stx-1.6, sty+1.6, stx, sty-3.4, stx+1.6, sty+1.6, '#e8d24a');
+  for (let i=0;i<4;i++){                                  // legs
+    R(x-8+i*4, y+1, 1.6, 5, INKp); R(x-8+i*4+0.4, y+1, 1, 4, B);
+  }
+  ell(x, y-2, 10, 6.4, INKp); ell(x, y-2, 9, 5.4, B);
+  ell(x-2, y-3.4, 5, 2.6, B2);
+  R(x-9, y-3, 18, 1, B3);
+  for (const s of [-1,1]){                                 // claws
+    R(x+s*11-2, y-4, 4, 3.4, INKp);
+    R(x+s*11-1.4, y-3.6, 2.8, 2.6, B2);
+    R(x+s*13.4-1, y-6, 2, 3, INKp); R(x+s*13.4-0.6, y-5.6, 1.2, 2.2, B3);
+  }
+  R(x-4.4, y-4.4, 2.4, 1.8, '#ffe14a'); R(x+2, y-4.4, 2.4, 1.8, '#ffe14a');
+  if (hurt>0) glow(x, y-2, 16, '#ffffff', 0.45*hurt);
+}
+function drawSnake(x, y, t, hurt){
+  const G1='#2e7a3e', G2='#46a css', INKp='#1a1016';
+  const g1='#2e7a3e', g2='#48a css';
+  ell(x, y+4, 10, 3, 'rgba(0,0,0,0.25)');
+  for (let i=7;i>=1;i--){                                  // coiling body
+    const sx = x - i*4.4, sy = y + Math.sin(t*4 - i*0.8)*4;
+    circle(sx, sy, 4.2, INKp); circle(sx, sy, 3.4, i%2 ? '#2e7a3e' : '#3f9450');
+    if (i%2===0) R(sx-1.4, sy-1, 2.8, 1.2, '#d8e06a');
+  }
+  circle(x, y, 5.6, INKp); circle(x, y, 4.8, '#3f9450');
+  circle(x-1.4, y-1.6, 2.4, '#54ad63');
+  R(x+3, y-1.6, 4.4, 3.4, INKp); R(x+3, y-1.2, 3.6, 2.6, '#3f9450');
+  R(x+1, y-2.6, 2, 2, '#ffd23a'); R(x+1, y-2.4, 1, 1, '#1a1016');
+  const flick = Math.sin(t*9)>0 ? 3.4 : 2;
+  R(x+7, y+0.4, flick, 1, '#e0403c');
+  if (hurt>0) glow(x, y, 15, '#ffffff', 0.45*hurt);
+}
+function drawCentipedeSeg(x, y, t, i, head, hurt){
+  const INKp='#1a1016';
+  const legPhase = Math.sin(t*10 + i*0.9);
+  R(x-5, y-1, 2, 4.4+legPhase, INKp); R(x+3, y-1, 2, 4.4-legPhase, INKp);
+  R(x-5, y-4.4, 2, 3.4, INKp); R(x+3, y-4.4, 2, 3.4, INKp);
+  circle(x, y, head?6.4:5, INKp);
+  circle(x, y, head?5.6:4.2, i%2 ? '#a8481c' : '#c25a24');
+  circle(x-1, y-1.2, head?2.8:2, '#d97a34');
+  if (head){
+    R(x+2.4, y-3.4, 3.4, 2, INKp); R(x-5.8, y-3.4, 3.4, 2, INKp);   // antennae
+    R(x-2.6, y-1.6, 2, 2, '#ffd23a'); R(x+0.8, y-1.6, 2, 2, '#ffd23a');
+    R(x-2.4, y+2.4, 5, 1.6, '#5a1a10');
+    if (hurt>0) glow(x, y, 16, '#ffffff', 0.45*hurt);
+  }
+}
+function drawToad(x, y, t, hurt, crouch){
+  const INKp='#1a1016', T1='#5c7a2e', T2='#74963c', T3='#8fae4e';
+  const sq = crouch ? 0.72 : 1;
+  ell(x, y+4, 14, 3.4, 'rgba(0,0,0,0.25)');
+  R(x-13, y-2, 5, 5, INKp); R(x+8, y-2, 5, 5, INKp);        // back feet
+  R(x-12, y-1.4, 3.4, 3.6, T1); R(x+8.6, y-1.4, 3.4, 3.6, T1);
+  ell(x, y-6*sq, 13, 9*sq, INKp); ell(x, y-6*sq, 12, 8*sq, T1);
+  ell(x-2, y-8*sq, 8, 4.4*sq, T2);
+  for (const [wx,wy] of [[-7,-4],[4,-6],[-1,-2],[7,-3],[-5,-9]])
+    circle(x+wx, y-6*sq+wy*0.5, 1.4, T3);
+  ell(x, y-2.4*sq, 8, 2.6, '#d8d09a');                      // pale belly
+  for (const s of [-1,1]){                                   // bulging eyes
+    circle(x+s*5.4, y-13*sq, 3.8, INKp); circle(x+s*5.4, y-13*sq, 3, '#ffd23a');
+    circle(x+s*5.4, y-12.6*sq, 1.4, '#1a1016');
+  }
+  R(x-6, y-9.4*sq, 12, 1.6, '#3e5220');
+  if (hurt>0) glow(x, y-6, 18, '#ffffff', 0.45*hurt);
+}
+function drawSpider(x, y, t, hurt){
+  const INKp='#1a1016', S1='#2a2438', S2='#463c5c';
+  ell(x, y+3, 9, 2.6, 'rgba(0,0,0,0.25)');
+  for (let i=0;i<4;i++){                                     // eight legs
+    const k = Math.sin(t*11 + i*1.2)*1.6;
+    for (const s of [-1,1]){
+      const bx = x + s*4, by = y-1;
+      const mx = bx + s*(6+i*0.6), my = by - 4 + i*1.6 + k;
+      const ex = bx + s*(10+i), ey = by + 2 + i*1.4 - k;
+      cx.strokeStyle = INKp; cx.lineWidth = P*1.2;
+      cx.beginPath(); cx.moveTo(bx*P, by*P); cx.lineTo(mx*P, my*P); cx.lineTo(ex*P, ey*P); cx.stroke();
+    }
+  }
+  ell(x-1, y, 7, 6, INKp); ell(x-1, y, 6, 5, S1);
+  ell(x-2, y-1.4, 3, 2.2, S2);
+  R(x-3.4, y-1, 6, 1.2, '#c8443c');
+  circle(x+5.4, y-1.4, 4, INKp); circle(x+5.4, y-1.4, 3.2, S1);
+  for (const [ex,ey,r] of [[4.2,-2.8,1],[6.6,-2.8,1],[4.6,-0.6,0.8],[7,-0.6,0.8]])
+    circle(x+ex, y+ey, r, '#e0403c');
+  if (hurt>0) glow(x, y, 14, '#ffffff', 0.45*hurt);
+}
+function drawPoisonKing(x, y, t, hurt, rage){
+  const INKp='#1a1016';
+  const bob = Math.sin(t*2.4)*2;
+  ell(x, y+4, 26, 5, 'rgba(0,0,0,0.3)');
+  // centipede legs down both sides
+  for (let i=0;i<7;i++){
+    const k = Math.sin(t*7 + i)*2;
+    R(x-24+i*7, y-6+k*0.4, 3, 10, INKp); R(x-23.4+i*7, y-5, 1.8, 8, '#a8481c');
+  }
+  // scorpion tail arcing overhead
+  for (let i=0;i<6;i++){
+    const a = -1.35 + i*0.34, r = 26 + i*2;
+    const sx = x - 14 + Math.cos(a)*r*0.6, sy = y - 22 - Math.sin(a)*r*0.62 + bob*0.5;
+    circle(sx, sy, 5-i*0.4, INKp); circle(sx, sy, 4.2-i*0.4, i%2?'#8a3a72':'#6a2a5a');
+  }
+  const stx = x - 6, sty = y - 48 + bob*0.5;
+  tri(stx-3.6, sty+3, stx, sty-7, stx+3.6, sty+3, INKp);
+  tri(stx-2.4, sty+2.4, stx, sty-5.2, stx+2.4, sty+2.4, '#e8d24a');
+  // toad body
+  ell(x, y-14+bob, 25, 16, INKp); ell(x, y-14+bob, 24, 15, '#5c7a2e');
+  ell(x-4, y-19+bob, 15, 7, '#74963c');
+  for (const [wx,wy] of [[-13,-6],[9,-9],[-2,-3],[14,-5],[-9,-14],[5,-16]])
+    circle(x+wx, y-14+bob+wy*0.4, 2.2, '#8fae4e');
+  ell(x, y-6+bob, 15, 4.4, '#d8d09a');
+  // snake head as the face
+  circle(x, y-30+bob, 11, INKp); circle(x, y-30+bob, 10, '#3f9450');
+  circle(x-3, y-33+bob, 4.4, '#54ad63');
+  R(x+7, y-32+bob, 8, 6, INKp); R(x+7, y-31.4+bob, 7, 4.8, '#3f9450');
+  const flick = Math.sin(t*9)>0 ? 6 : 3.4;
+  R(x+15, y-28.6+bob, flick, 1.4, '#e0403c');
+  // spider eye cluster
+  for (const [ex,ey,r] of [[-5,-33,2.2],[1,-33.6,2.2],[-6,-29,1.6],[2,-29.4,1.6],[-2,-31.4,1.8]]){
+    circle(x+ex, y+ey+bob, r+0.8, INKp);
+    circle(x+ex, y+ey+bob, r, rage ? '#ff3820' : '#ffd23a');
+  }
+  R(x-8, y-36+bob, 16, 2.4, INKp);
+  // fangs
+  tri(x-5, y-23+bob, x-3.4, y-18+bob, x-1.8, y-23+bob, '#f6f2e6');
+  tri(x+2, y-23+bob, x+3.6, y-18+bob, x+5.2, y-23+bob, '#f6f2e6');
+  if (hurt>0) glow(x, y-20, 34, '#ffffff', 0.4*hurt);
+  if (rage) glow(x, y-30, 30, '#ff3820', 0.2);
+}
+function drawMugwort(x, y, aim, k){
+  const a = aim + lerp(-0.95, 0.95, k);
+  const hx = x+Math.cos(a)*6, hy = y+Math.sin(a)*6;
+  const tx = x+Math.cos(a)*18, ty = y+Math.sin(a)*18;
+  cx.strokeStyle='#7a5a38'; cx.lineWidth=P*1.6;
+  cx.beginPath(); cx.moveTo(hx*P,hy*P); cx.lineTo(tx*P,ty*P); cx.stroke();
+  for (let i=-3;i<=3;i++){
+    const lx = tx+Math.cos(a+Math.PI/2)*i*2, ly = ty+Math.sin(a+Math.PI/2)*i*2;
+    circle(lx, ly, 2.2, '#2e7a3e'); circle(lx-0.6, ly-0.6, 1.2, '#6ab04c');
+  }
+  cx.globalAlpha = 0.3*(1-Math.abs(k-0.5)*2);
+  circle(tx, ty, 11, '#a8e08a');
+  cx.globalAlpha = 1;
+}
+
+/* ---------------- the fight ---------------- */
+function makePoisonBattle(onDone){
+  const st = {
+    usesDash:true,
+    mode:'intro', t:0, evT:0, fightT:0, wave:0,
+    px:250, py:120, dir:'left', moving:false,
+    dashT:0, dashCd:0, inv:0, swingT:0, swingCd:0, swingDir:'right',
+    hearts:5, maxHearts:5, charge:0, ghosts:[], deaths:0,
+    foes:[], venom:[], rings:[], webs:[], king:null,
+    msg:'', msgT:0, msgC:'#ffe9b0', shake:0, danger:false, fledT:-1,
+  };
+  window.POISON = st;
+  function say2(m,c){ st.msg=m; st.msgT=1.3; st.msgC=c||'#ffe9b0'; }
+  function hurtPlayer(){
+    if (st.inv>0 || st.mode!=='fight') return;
+    st.hearts--; st.inv=1.7; st.shake=0.5;
+    SFX.bad(); noiseHit(0.3,0.4,true);
+    burst(st.px, st.py-8, ['#8a3a72','#ffffff'], 16, 55);
+    for (const f of st.foes){                       // shove everything off you
+      const d = dist(f.x,f.y,st.px,st.py-8);
+      if (d < 46){ const a = Math.atan2(f.y-(st.py-8), f.x-st.px);
+        f.vx += Math.cos(a)*230; f.vy += Math.sin(a)*230;
+        if (f.state) { f.state='idle'; f.stT=0; } }
+    }
+    if (st.hearts<=0){ st.mode='lose'; st.evT=0; st.deaths=(st.deaths||0)+1; }
+  }
+  function spawn(kind, x, y){
+    const base = { kind, x, y, vx:0, vy:0, hurtT:0, t:rnd(3), state:'idle', stT:0 };
+    if (kind==='scorpion') Object.assign(base, { hp:7, r:11 });
+    if (kind==='snake')    Object.assign(base, { hp:6, r:7, shootT:rnd(1,2) });
+    if (kind==='toad')     Object.assign(base, { hp:12, r:13 });
+    if (kind==='spider')   Object.assign(base, { hp:5, r:7, webT:rnd(1,2) });
+    if (kind==='centipede')Object.assign(base, { hp:11, r:7, tail:[], ang:rnd(6.28) });
+    st.foes.push(base);
+  }
+  const WAVES = [
+    ()=>{ spawn('scorpion', 60, 80); spawn('snake', 60, 140); say2('WAVE 1 — scorpion & snake', '#ff8a70'); },
+    ()=>{ spawn('centipede', 50, 100); spawn('spider', 280, 80); spawn('spider', 280, 148); say2('WAVE 2 — centipede & spiders', '#ff8a70'); },
+    ()=>{ spawn('toad', 160, 70); spawn('snake', 280, 130); spawn('scorpion', 46, 140); say2('WAVE 3 — the great toad!', '#ff8a70'); },
+  ];
+  function startKing(){
+    if (st.hearts < 3){ st.hearts = 3; say2('Granny refills your sachet — 3 sprigs for the King!', '#7ce87c'); }
+    st.king = { x:160, y:120, vx:0, vy:0, hp:52, maxHp:52, hurtT:0, atk:null, atkCd:1.4, ang:0 };
+    st.mode='king'; hissSfx(); SFX.gong(); st.shake=0.9;
+    say2('WǓ DÚ — THE FIVE-POISON KING!', '#ff3820');
+  }
+  function nextWave(){
+    if (st.wave < WAVES.length){ WAVES[st.wave](); st.wave++; }
+    else startKing();
+  }
+
+  return {
+    usesDash:true, aim:true,
+    enter(){ playMusic(4); },
+    update(dt){
+      st.t+=dt; st.evT+=dt;
+      st.msgT=Math.max(0,st.msgT-dt); st.shake=Math.max(0,st.shake-dt);
+      st.inv=Math.max(0,st.inv-dt); st.dashT=Math.max(0,st.dashT-dt);
+      st.dashCd=Math.max(0,st.dashCd-dt); st.swingT=Math.max(0,st.swingT-dt);
+      st.swingCd=Math.max(0,st.swingCd-dt);
+      st.ghosts = st.ghosts.filter(g=>(g.t+=dt)<0.25);
+      updateParts(dt);
+
+      if (st.mode==='intro'){ if (st.evT>2.2 || just.a){ st.mode='fight'; nextWave(); } return; }
+      if (st.mode==='lose'){
+        if (just.a && st.evT>0.9){
+          st.hearts=st.maxHearts; st.wave=0; st.foes=[]; st.venom=[]; st.rings=[]; st.webs=[];
+          st.king=null; st.px=250; st.py=120; st.charge=0; st.mode='fight'; st.evT=0; st.fightT=0;
+          nextWave();
+        }
+        return;
+      }
+      if (st.mode==='win'){
+        if (st.fledT<0) st.fledT=st.t;
+        if (Math.random()<0.14) burst(rnd(40,280), rnd(60,140), ['#6ab04c','#f2b632','#a8e08a'], 14, 60);
+        if (st.evT>2.6){ popScene(); onDone(); }
+        return;
+      }
+      st.fightT += dt;
+      st.charge = Math.min(100, st.charge + 24*dt);
+
+      /* ---- player ---- */
+      let vx=0, vy=0;
+      if (keys.left) vx=-1; else if (keys.right) vx=1;
+      if (keys.up) vy=-1; else if (keys.down) vy=1;
+      st.moving=!!(vx||vy);
+      if (vx&&vy){ vx*=0.707; vy*=0.707; }
+      if (vx<0) st.dir='left'; else if (vx>0) st.dir='right';
+      else if (vy<0) st.dir='up'; else if (vy>0) st.dir='down';
+      if (just.dash && st.dashCd<=0){ st.dashT=0.16; st.dashCd=0.6; st.inv=Math.max(st.inv,0.28); SFX.dash(); }
+      let spd = st.dashT>0 ? 285 : 110;
+      for (const w of st.webs) if (dist(w.x,w.y,st.px,st.py-8) < 16 && st.dashT<=0) spd *= 0.45;
+      if (st.dashT>0 && !vx && !vy){
+        vx = st.dir==='left'?-1: st.dir==='right'?1:0;
+        vy = st.dir==='up'?-1: st.dir==='down'?1:0;
+      }
+      st.px = clamp(st.px+vx*spd*dt, PR.x0+8, PR.x1-8);
+      st.py = clamp(st.py+vy*spd*dt, PR.y0+12, PR.y1-4);
+      if (st.dashT>0) st.ghosts.push({x:st.px,y:st.py,t:0});
+
+      /* ---- mugwort swing ---- */
+      if ((just.a || just.click) && st.swingCd<=0){
+        st.swingT=0.24; st.swingCd=0.3; swingSfx();
+        st.aimA = mouse.over ? aimAngle(st.px, st.py-8)
+                : (st.dir==='left'?Math.PI: st.dir==='right'?0: st.dir==='up'?-Math.PI/2:Math.PI/2);
+        const ax = Math.cos(st.aimA), ay = Math.sin(st.aimA);
+        if (Math.abs(ax) > Math.abs(ay)) st.dir = ax<0?'left':'right'; else st.dir = ay<0?'up':'down';
+        const hx = st.px+ax*17, hy = st.py-8+ay*17;
+        for (const f of st.foes){
+          if (dist(f.x,f.y,hx,hy) < 27+f.r){
+            f.hp--; f.hurtT=0.25;
+            const a = Math.atan2(f.y-(st.py-8), f.x-st.px);
+            f.vx += Math.cos(a)*230; f.vy += Math.sin(a)*230;
+            burst(f.x,f.y,['#6ab04c','#a8e08a'],8,40);
+          }
+        }
+        if (st.king && dist(st.king.x, st.king.y-20, hx, hy) < 38){
+          st.king.hp--; st.king.hurtT=0.25;
+          burst(st.king.x, st.king.y-20, ['#6ab04c','#a8e08a'],10,45);
+          if (st.king.hp<=0){ st.mode='win'; st.evT=0; st.fledT=-1; st.venom=[]; st.rings=[]; playMusic(2); SFX.win(); }
+        }
+        for (const v of st.venom) if (dist(v.x,v.y,hx,hy) < 20) v.gone = true;   // bat away venom
+      }
+      /* ---- sachet burst ---- */
+      if ((just.b || (just.click && mouse.down && false)) && st.charge>=100){
+        st.charge = 0; burstSfx(); st.shake=0.4;
+        burst(st.px, st.py-8, ['#a8e08a','#6ab04c','#f2b632'], 40, 90);
+        for (const v of st.venom) if (dist(v.x,v.y,st.px,st.py-8) < 52) v.gone=true;
+        for (const f of st.foes) if (dist(f.x,f.y,st.px,st.py-8) < 52){
+          f.hp -= 2; f.hurtT=0.3;
+          const a = Math.atan2(f.y-(st.py-8), f.x-st.px);
+          f.vx += Math.cos(a)*180; f.vy += Math.sin(a)*180;
+        }
+        if (st.king && dist(st.king.x, st.king.y-20, st.px, st.py-8) < 60){
+          st.king.hp -= 2; st.king.hurtT=0.3;
+          if (st.king.hp<=0){ st.mode='win'; st.evT=0; st.fledT=-1; st.venom=[]; st.rings=[]; playMusic(2); SFX.win(); }
+        }
+        st.webs = st.webs.filter(w=> dist(w.x,w.y,st.px,st.py-8) > 52);
+      }
+
+      /* ---- foes ---- */
+      for (const f of st.foes){
+        f.t += dt; f.stT += dt; f.hurtT = Math.max(0, f.hurtT-dt);
+        const toP = Math.atan2(st.py-8-f.y, st.px-f.x);
+        if (f.kind==='scorpion'){
+          if (f.state==='idle'){
+            f.vx += Math.cos(toP)*17*dt; f.vy += Math.sin(toP)*17*dt;
+            if (f.stT > 2.0){ f.state='wind'; f.stT=0; f.aim=toP; }
+          } else if (f.state==='wind'){
+            f.aim = toP;
+            if (f.stT > 0.75){ f.state='dash'; f.stT=0; f.vx=Math.cos(f.aim)*160; f.vy=Math.sin(f.aim)*160; hissSfx(); }
+          } else if (f.state==='dash'){
+            if (f.stT > 0.45){ f.state='idle'; f.stT=0; }
+          }
+        } else if (f.kind==='snake'){
+          const perp = toP + Math.PI/2;
+          f.vx += (Math.cos(toP)*22 + Math.cos(perp)*Math.sin(f.t*3)*32)*dt;
+          f.vy += (Math.sin(toP)*22 + Math.sin(perp)*Math.sin(f.t*3)*32)*dt;
+          f.shootT -= dt;
+          if (f.shootT<=0){
+            f.shootT = 2.8;
+            st.venom.push({ x:f.x, y:f.y, vx:Math.cos(toP)*66, vy:Math.sin(toP)*66, t:0 });
+            hissSfx();
+          }
+        } else if (f.kind==='spider'){
+          if (f.stT > 0.9){
+            f.stT = 0; f.vx = Math.cos(toP+rnd(-0.9,0.9))*98; f.vy = Math.sin(toP+rnd(-0.9,0.9))*98;
+          }
+          f.webT -= dt;
+          if (f.webT<=0){ f.webT = 3.4; st.webs.push({x:f.x, y:f.y, t:0}); }
+        } else if (f.kind==='toad'){
+          if (f.state==='idle'){
+            if (f.stT > 1.9){ f.state='crouch'; f.stT=0; f.tx=st.px; f.ty=st.py-8; }
+          } else if (f.state==='crouch'){
+            if (f.stT > 0.8){ f.state='leap'; f.stT=0; f.sx=f.x; f.sy=f.y; }
+          } else if (f.state==='leap'){
+            const k = Math.min(f.stT/0.55, 1);
+            f.x = f.sx + (f.tx-f.sx)*k; f.y = f.sy + (f.ty-f.sy)*k;
+            f.hop = Math.sin(k*Math.PI)*22;
+            if (k>=1){
+              f.state='idle'; f.stT=0; f.hop=0;
+              st.rings.push({x:f.x, y:f.y, r:6});
+              mdrum(0,0.5); st.shake=0.4;
+            }
+          }
+        } else if (f.kind==='centipede'){
+          f.ang += Math.sin(f.t*1.6)*dt*2.2;
+          const desired = Math.atan2(st.py-8-f.y, st.px-f.x);
+          let da = ((desired - f.ang + Math.PI*3) % (Math.PI*2)) - Math.PI;
+          f.ang += clamp(da, -1.6*dt, 1.6*dt);
+          f.vx = Math.cos(f.ang)*46; f.vy = Math.sin(f.ang)*46;
+          f.tail.unshift({x:f.x, y:f.y});
+          if (f.tail.length > 44) f.tail.pop();
+        }
+        if (f.kind!=='toad' || f.state!=='leap'){
+          f.x += f.vx*dt; f.y += f.vy*dt;
+          f.vx *= 0.9; f.vy *= 0.9;
+        }
+        f.x = clamp(f.x, PR.x0+10, PR.x1-10);
+        f.y = clamp(f.y, PR.y0+10, PR.y1-6);
+        // contact
+        const cr = f.kind==='centipede' ? 9 : f.r;
+        if (dist(f.x,f.y,st.px,st.py-8) < cr+1 && st.dashT<=0) hurtPlayer();
+        if (f.kind==='centipede'){
+          for (let i=10;i<f.tail.length;i+=12){
+            const s = f.tail[i];
+            if (dist(s.x,s.y,st.px,st.py-8) < 9 && st.dashT<=0) hurtPlayer();
+          }
+        }
+        if (f.hp<=0){
+          f.dead = true;
+          burst(f.x,f.y,['#6ab04c','#a8e08a','#f2b632'],22,70);
+          dustPoof(f.x,f.y,true);
+        }
+      }
+      const alive = st.foes.filter(f=>!f.dead);
+      if (alive.length !== st.foes.length){
+        st.foes = alive;
+        if (!st.foes.length && st.mode==='fight'){
+          if (st.wave < WAVES.length){
+            if (st.hearts < st.maxHearts){
+              st.hearts++;
+              say2('Wave cleared — Granny hands you a fresh sprig! +1', '#7ce87c');
+              burst(st.px, st.py-10, ['#7ce87c','#ffe9b0'], 18, 50);
+            } else say2('Wave cleared!', '#7ce87c');
+            SFX.sparkle();
+          }
+          nextWave();
+        }
+      }
+
+      /* ---- the king ---- */
+      if (st.king){
+        const k = st.king;
+        k.hurtT = Math.max(0, k.hurtT-dt);
+        const toP = Math.atan2(st.py-8-(k.y-20), st.px-k.x);
+        const gap = dist(k.x, k.y-20, st.px, st.py-8);
+        if (!k.atk){
+          const push = gap > 92 ? 1 : gap < 56 ? -1.1 : 0;
+          k.vx += Math.cos(toP)*36*push*dt; k.vy += Math.sin(toP)*26*push*dt;
+          k.atkCd -= dt;
+          if (k.atkCd<=0){
+            const rage = k.hp <= k.maxHp/2;
+            k.atk = { kind: pick(rage ? ['fan','ring','charge','summon','fan','ring'] : ['fan','ring','charge','summon']),
+                      ph:'warn', t:0, warn: rage?0.55:0.75 };
+            if (k.atk.kind==='charge'){ k.atk.tx=st.px; k.atk.ty=st.py; }
+          }
+        } else {
+          const A = k.atk; A.t += dt;
+          const rage = k.hp <= k.maxHp/2;
+          if (A.ph==='warn'){
+            if (A.kind==='charge'){ A.tx=st.px; A.ty=st.py; }
+            if (A.t>=A.warn){
+              A.ph='go'; A.t=0;
+              if (A.kind==='fan'){
+                const n = rage?7:5;
+                for (let i=0;i<n;i++)
+                  st.venom.push({ x:k.x, y:k.y-20, vx:Math.cos(toP+(i-(n-1)/2)*0.24)*88,
+                                  vy:Math.sin(toP+(i-(n-1)/2)*0.24)*88, t:0 });
+                hissSfx(); k.atk=null; k.atkCd = rage?1.2:1.7;
+              } else if (A.kind==='ring'){
+                st.rings.push({x:k.x, y:k.y-14, r:8});
+                const n = rage?12:9, off=rnd(6.28);
+                for (let i=0;i<n;i++)
+                  st.venom.push({ x:k.x, y:k.y-20, vx:Math.cos(off+i/n*6.283)*54, vy:Math.sin(off+i/n*6.283)*54, t:0 });
+                mdrum(0,0.6); st.shake=0.5; k.atk=null; k.atkCd = rage?1.4:1.9;
+              } else if (A.kind==='summon'){
+                spawn(pick(['snake','spider','scorpion']), k.x+rnd(-26,26), k.y+rnd(-20,20));
+                if (rage) spawn(pick(['spider','snake']), k.x+rnd(-26,26), k.y+rnd(-20,20));
+                hissSfx(); k.atk=null; k.atkCd = 1.9;
+              }
+            }
+          } else if (A.kind==='charge'){
+            if (A.ph==='go'){
+              const a = Math.atan2(A.ty-8-(k.y-20), A.tx-k.x);
+              k.vx = Math.cos(a)*230; k.vy = Math.sin(a)*230;
+              if (A.t>0.55 || k.x<=PR.x0+26 || k.x>=PR.x1-26 || k.y<=PR.y0+34 || k.y>=PR.y1-6){
+                A.ph='recover'; A.t=0; k.vx*=0.2; k.vy*=0.2; st.shake=0.4; mdrum(0,0.5);
+              }
+            } else if (A.t>0.85){ k.atk=null; k.atkCd = rage?1.2:1.6; }
+          }
+        }
+        k.x += k.vx*dt; k.y += k.vy*dt;
+        k.vx *= 0.94; k.vy *= 0.94;
+        k.x = clamp(k.x, PR.x0+26, PR.x1-26);
+        k.y = clamp(k.y, PR.y0+34, PR.y1-4);
+        if (gap < 24 && st.dashT<=0) hurtPlayer();
+      }
+
+      /* ---- projectiles ---- */
+      for (const v of st.venom){
+        v.t += dt; v.x += v.vx*dt; v.y += v.vy*dt;
+        if (dist(v.x,v.y,st.px,st.py-8) < 8 && st.dashT<=0){ v.gone=true; hurtPlayer(); }
+        if (v.x<PR.x0-6||v.x>PR.x1+6||v.y<PR.y0-6||v.y>PR.y1+6||v.t>7) v.gone=true;
+      }
+      st.venom = st.venom.filter(v=>!v.gone);
+      for (const r of st.rings){
+        r.r += 112*dt;
+        if (Math.abs(dist(st.px,st.py-8,r.x,r.y)-r.r) < 8 && st.dashT<=0) hurtPlayer();
+        if (r.r>320) r.gone = true;
+      }
+      st.rings = st.rings.filter(r=>!r.gone);
+      for (const w of st.webs) w.t += dt;
+      st.webs = st.webs.filter(w=> w.t < 9);
+
+      st.danger = st.venom.some(v=>dist(v.x,v.y,st.px,st.py-8)<34)
+        || st.rings.some(r=>Math.abs(dist(st.px,st.py-8,r.x,r.y)-r.r)<26)
+        || st.foes.some(f=> dist(f.x,f.y,st.px,st.py-8)<34 || (f.kind==='scorpion'&&f.state==='dash'))
+        || (st.king && dist(st.king.x,st.king.y-20,st.px,st.py-8)<46);
+    },
+
+    render(){
+      const shx = st.shake>0 ? Math.round(Math.sin(st.t*70)*st.shake*4) : 0;
+      cx.save(); cx.translate(shx*P,0);
+      /* summer riverbank */
+      R(0,0,LW,LH,'#2a4a2e');
+      for (let y=PR.y0-10; y<PR.y1+10; y+=16)
+        for (let x=PR.x0-8; x<PR.x1+8; x+=16) grassTile(x, y, x/16, y/16, PALS[2], '#4e8c3c');
+      R(0, PR.y1+4, LW, LH-PR.y1-4, '#2a5a86');
+      for (let i=0;i<LW;i+=18) R(i+((st.t*8)%18), PR.y1+8, 10, 1.4, '#3f78a8');
+      for (let i=0;i<LW;i+=11) R(i, PR.y1+1, 1.4, 5, '#6ab04c');
+      // hung mugwort along the top fence
+      R(PR.x0-8, PR.y0-12, PR.x1-PR.x0+16, 4, '#6a4a34');
+      for (let i=0;i<11;i++){
+        const bx = PR.x0+6+i*26;
+        R(bx-0.8, PR.y0-8, 1.6, 7, '#7a5a38');
+        circle(bx, PR.y0-1, 2.6, '#2e7a3e'); circle(bx-0.8, PR.y0-1.8, 1.4, '#6ab04c');
+      }
+      // webs
+      for (const w of st.webs){
+        const a = clamp(1 - w.t/9, 0, 1);
+        cx.globalAlpha = a*0.75;
+        for (let i=0;i<8;i++){
+          const an = i/8*6.283;
+          cx.strokeStyle='#d8dce8'; cx.lineWidth=P*0.8;
+          cx.beginPath(); cx.moveTo(w.x*P,w.y*P);
+          cx.lineTo((w.x+Math.cos(an)*13)*P,(w.y+Math.sin(an)*13)*P); cx.stroke();
+        }
+        for (let r=5;r<=12;r+=4){
+          cx.beginPath();
+          for (let i=0;i<=8;i++){ const an=i/8*6.283;
+            const px2=(w.x+Math.cos(an)*r)*P, py2=(w.y+Math.sin(an)*r)*P;
+            i?cx.lineTo(px2,py2):cx.moveTo(px2,py2); }
+          cx.stroke();
+        }
+        cx.globalAlpha = 1;
+      }
+      // shock rings
+      for (const r of st.rings){
+        for (let i=0;i<24;i++){
+          const a=i/24*6.283;
+          R(r.x+Math.cos(a)*r.r, r.y+Math.sin(a)*r.r*0.72, 2.4, 2.4, i%2?'#8fae4e':'#d8d09a');
+        }
+      }
+      // actors, depth sorted
+      const items = [];
+      for (const f of st.foes){
+        if (f.kind==='centipede'){
+          items.push({y:f.y, f:()=>{
+            for (let i=f.tail.length-1;i>=4;i-=4){
+              const s2=f.tail[i]; drawCentipedeSeg(s2.x, s2.y, st.t, i, false, 0);
+            }
+            drawCentipedeSeg(f.x, f.y, st.t, 0, true, f.hurtT);
+          }});
+        } else if (f.kind==='scorpion') items.push({y:f.y, f:()=> drawScorpion(f.x,f.y,st.t,f.hurtT)});
+        else if (f.kind==='snake')      items.push({y:f.y, f:()=> drawSnake(f.x,f.y,st.t,f.hurtT)});
+        else if (f.kind==='spider')     items.push({y:f.y, f:()=> drawSpider(f.x,f.y,st.t,f.hurtT)});
+        else if (f.kind==='toad')       items.push({y:f.y, f:()=> drawToad(f.x,f.y-(f.hop||0),st.t,f.hurtT,f.state==='crouch')});
+        if (f.kind==='scorpion' && f.state==='wind'){
+          items.push({y:f.y+1, f:()=>{
+            cx.globalAlpha=0.5+Math.sin(st.t*18)*0.2;
+            for (let i=1;i<10;i++) R(f.x+Math.cos(f.aim)*i*13, f.y+Math.sin(f.aim)*i*13, 3, 3, '#ff3820');
+            cx.globalAlpha=1;
+          }});
+        }
+        if (f.kind==='toad' && f.state==='crouch'){
+          items.push({y:f.y+1, f:()=>{
+            cx.globalAlpha=0.45+Math.sin(st.t*16)*0.2;
+            ell(f.tx, f.ty, 18, 6, '#ff7030'); cx.globalAlpha=1;
+          }});
+        }
+      }
+      if (st.king) items.push({y:st.king.y, f:()=> drawPoisonKing(st.king.x, st.king.y, st.t, st.king.hurtT, st.king.hp<=st.king.maxHp/2)});
+      items.push({y:st.py, f:()=>{
+        for (const g of st.ghosts){
+          cx.globalAlpha=0.3*(1-g.t/0.25);
+          R(g.x-6,g.y-20,12,20, playerLook().top||'#e8b028'); cx.globalAlpha=1;
+        }
+        if (!(st.inv>0.3 && Math.sin(st.t*40)>0))
+          drawPerson(st.px, st.py, {...playerLook(), dir:st.dir, walk:st.moving||st.dashT>0}, st.t);
+        if (st.swingT>0) drawMugwort(st.px, st.py-9, st.aimA||0, 1-st.swingT/0.24);
+        else {
+          const ax = st.dir==='left'?-1:1;
+          R(st.px+ax*7, st.py-17, 1.6, 14, '#7a5a38');
+          circle(st.px+ax*7.8, st.py-19, 2.6, '#2e7a3e');
+        }
+      }});
+      items.sort((a,b)=>a.y-b.y);
+      for (const it of items) it.f();
+      // venom
+      for (const v of st.venom){
+        circle(v.x, v.y, 3.4, '#7ad24a'); circle(v.x-0.8, v.y-0.8, 1.6, '#d8f08a');
+        glow(v.x, v.y, 8, '#7ad24a', 0.25);
+      }
+      drawParts(0,0);
+      cx.restore();
+
+      /* HUD */
+      mgHeader('THE FIVE POISONS', 'the fifth day of the fifth month');
+      for (let i=0;i<st.maxHearts;i++) drawMugwortPip(12+i*11, 32, i < st.hearts, st.t);
+      // sachet charge
+      T('SACHET', 232, 30, 5, st.charge>=100 ? '#7ce87c' : '#8a7c6a');
+      R(268, 30, 44, 6, 'rgba(20,12,16,0.85)');
+      R(268, 30, 44*(st.charge/100), 6, st.charge>=100 ? '#7ce87c' : '#c8a860');
+      if (st.charge>=100) T('✕ !', 250, 38, 5, Math.sin(st.t*7)>0?'#7ce87c':'#8a7c6a');
+      if (st.king){
+        T('WǓ DÚ', 96, 30, 5.4, '#ff8a70');
+        R(130, 30, 92, 7, 'rgba(20,12,16,0.85)');
+        R(131, 31, 90*clamp(st.king.hp/st.king.maxHp,0,1), 5, '#8a3a72');
+      } else {
+        T('WAVE '+Math.min(st.wave,3)+' / 3', 160, 30, 5.4, '#cfc0a8', 'center');
+      }
+      R(276, 42, 38, 4, 'rgba(20,12,16,0.85)');
+      R(276, 42, 38*(1-st.dashCd/0.6), 4, st.dashCd<=0?'#7ce87c':'#8a7c6a');
+      T('DASH', 254, 41, 4.6, '#8a7c6a');
+
+      if (st.mode==='intro'){
+        box(24, 62, 272, 56);
+        T('THE FIVE POISONS RISE!', LW/2, 68, 8, '#ff8a70','center');
+        T('Snake, scorpion, centipede, toad and spider —', LW/2, 84, 5.4, '#f4e8d0','center');
+        T('drive them off with mugwort!', LW/2, 93, 5.4, '#f4e8d0','center');
+        T('ARROWS move · CLICK swings at the cursor · ✕ sachet · SPACE dash', LW/2, 105, 5.4, '#ffe9b0','center');
+      } else if (st.mode==='win'){
+        box(34, 62, 252, 50);
+        T('THE POISONS FLEE!', LW/2, 68, 8.4, '#7ce87c','center');
+        T('Hang the mugwort — summer can do its worst.', LW/2, 84, 5.6, '#f4e8d0','center');
+        T('✓', LW/2, 96, 6, '#cfc0a8','center');
+      } else if (st.mode==='lose'){
+        box(36, 60, 248, 56);
+        T('THE POISON TAKES HOLD…', LW/2, 66, 8, '#ff8a70','center');
+        T('Granny Zhu presses fresh mugwort into your hand.', LW/2, 82, 5.4, '#f4e8d0','center');
+        T('✓ TRY AGAIN', LW/2, 96, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+      }
+      if (st.msgT>0 && (st.mode==='fight'||st.mode==='king')) T(st.msg, LW/2, 122, 6.6, st.msgC, 'center');
+    }
+  };
+}
+function drawMugwortPip(x, y, alive, t){
+  if (alive){
+    R(x-0.8, y+2, 1.6, 7, '#7a5a38');
+    circle(x, y+2, 3.4, '#2e7a3e'); circle(x-1, y+1, 1.8, '#6ab04c');
+    circle(x-3, y+4, 1.8, '#3f9450'); circle(x+3, y+4, 1.8, '#3f9450');
+  } else {
+    R(x-0.8, y+2, 1.6, 7, '#4a3a2a');
+    circle(x, y+2, 3, '#3a3a34');
+  }
 }
 /* ============================================================
    BOOT
