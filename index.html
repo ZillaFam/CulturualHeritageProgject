@@ -328,6 +328,8 @@ function frame(now){
   G.time += dt;
   const s = topScene();
   if (s){
+    // SPACE dashes only in scenes that use it; everywhere else it confirms
+    if (just.dash && !s.usesDash) just.a = true;
     if (s.update) s.update(dt);
     // render from the lowest opaque scene upward (overlays draw on top)
     let start = stack.length-1;
@@ -2312,6 +2314,7 @@ function dlgNext(){
   DLG.line = e; DLG.chars = 0; DLG.blipT = 0; DLG.blipI = 0;
 }
 function dlgUpdate(dt){
+  if (just.dash) just.a = true;      // SPACE also advances dialogue
   if (DLG.choice){
     const n = DLG.choice.choice.length;
     if (just.up)   { DLG.sel = (DLG.sel+n-1)%n; SFX.blip(); }
@@ -2524,6 +2527,7 @@ function blockedAt(x,y){
 
 /* ---------- world scene ---------- */
 const world = {
+  usesDash:true,
   px:470, py:150, dir:'down', walking:false,
   lx:450, ly:140,             // Lóng position
   cam:0, camY:0,
@@ -3047,6 +3051,372 @@ function makeHold(cfg, onDone){
       } else {
         T('HOLD ✓ to sweep!', LW/2, 34, 6.4, '#ffe9b0','center');
       }
+    }
+  };
+}
+/* ============================================================
+   SWEEP BATTLE — "Out With The Old Luck!"
+   Chase dust sprites around Auntie Hua's house and sweep them out
+   the door, then face HUÌ QÌ (晦气 — "bad luck"), the Dust King.
+   ============================================================ */
+
+/* arena bounds (logical px) */
+const SW = { x0:22, x1:298, y0:56, y1:162, doorY0:90, doorY1:142 };
+
+function dustPoof(x, y, big){
+  burst(x, y, ['#b9b2a6','#9a9288','#d6d0c4'], big?22:12, big?60:38);
+  noiseHit(big?0.22:0.12, big?0.3:0.18, true);
+}
+function sweepWhoosh(){ noiseHit(0.16, 0.22); tone(360, 0.09, 'triangle', 0.14); tone(520, 0.07, 'sine', 0.1, 0.04); }
+function kingLaugh(){ [300,262,232,262,300].forEach((f,i)=> tone(f, 0.13, 'square', 0.16, i*0.1)); }
+
+/* ---------- art ---------- */
+function drawDust(x, y, r, t, seed, angry){
+  const wob = Math.sin(t*7 + seed)*0.8;
+  // fuzzy body: spiky outline then fill
+  for (let i=0;i<9;i++){
+    const a = i/9*Math.PI*2 + t*1.4 + seed;
+    tri(x+Math.cos(a)*r*0.7, y+Math.sin(a)*r*0.7,
+        x+Math.cos(a)*(r+2.2+wob), y+Math.sin(a)*(r+2.2+wob),
+        x+Math.cos(a+0.6)*r*0.7, y+Math.sin(a+0.6)*r*0.7, '#6b665e');
+  }
+  circle(x, y+wob*0.4, r+0.9, '#4a453f');
+  circle(x, y+wob*0.4, r, '#8f8880');
+  circle(x-r*0.3, y-r*0.3+wob*0.4, r*0.5, '#aaa298');
+  // googly eyes
+  const ey = y - r*0.15 + wob*0.4;
+  circle(x-r*0.38, ey, r*0.3, '#ffffff'); circle(x+r*0.38, ey, r*0.3, '#ffffff');
+  const lx = Math.cos(t*3+seed)*r*0.09, ly = Math.sin(t*4+seed)*r*0.09;
+  circle(x-r*0.38+lx, ey+ly, r*0.14, '#1a1016'); circle(x+r*0.38+lx, ey+ly, r*0.14, '#1a1016');
+  if (angry){ R(x-r*0.62, ey-r*0.5, r*0.5, 1.2, '#1a1016'); R(x+r*0.12, ey-r*0.5, r*0.5, 1.2, '#1a1016'); }
+  R(x-1, y+r*0.42+wob*0.4, 2.4, 1.2, '#4a453f');
+}
+function drawDustKing(x, y, t, hurtT){
+  const bob = Math.sin(t*3)*1.6;
+  const R0 = 15;
+  cx.fillStyle='rgba(0,0,0,0.25)';
+  ell(x, y+R0-1, R0*0.9, 3, 'rgba(0,0,0,0.25)');
+  // shaggy dust mane
+  for (let i=0;i<14;i++){
+    const a = i/14*Math.PI*2 + t*0.9;
+    const sp = R0 + 4 + Math.sin(t*6+i)*2;
+    tri(x+Math.cos(a-0.22)*R0*0.85, y+bob+Math.sin(a-0.22)*R0*0.85,
+        x+Math.cos(a)*sp, y+bob+Math.sin(a)*sp,
+        x+Math.cos(a+0.22)*R0*0.85, y+bob+Math.sin(a+0.22)*R0*0.85,
+        i%2 ? '#6b665e' : '#57534c');
+  }
+  circle(x, y+bob, R0+1, '#3a3630');
+  circle(x, y+bob, R0, '#8f8880');
+  circle(x-4, y+bob-5, R0*0.55, '#aaa298');
+  if (hurtT>0 && Math.sin(t*40)>0){ circle(x, y+bob, R0, '#e8e2d6'); }
+  // crooked crown: last year's torn calendar page
+  cx.save(); cx.translate(x*P, (y+bob-R0-1)*P); cx.rotate(-0.16);
+  R(-8, -7, 16, 8, '#c8362a');
+  R(-8, -7, 16, 1.4, '#e8543c');
+  hanzi('年', 0, -2.6, 6, '#f2d68a');
+  tri(-8, -7, -5, -11, -2, -7, '#c8362a');
+  tri(-2, -7, 1, -12, 4, -7, '#c8362a');
+  tri(4, -7, 6.5, -10.5, 8, -7, '#c8362a');
+  cx.restore();
+  // big goofy eyes
+  const ey = y+bob-3;
+  circle(x-5.5, ey, 4.6, '#ffffff'); circle(x+5.5, ey, 4.6, '#ffffff');
+  const lx = Math.cos(t*2.2)*1.2, ly = Math.sin(t*3.1)*1.1;
+  circle(x-5.5+lx, ey+ly, 2.1, '#1a1016'); circle(x+5.5+lx, ey+ly, 2.1, '#1a1016');
+  R(x-9.5, ey-5.4, 6.4, 1.6, '#1a1016'); R(x+3.1, ey-5.4, 6.4, 1.6, '#1a1016');
+  // grin + buck tooth
+  R(x-5, ey+5, 10, 2.6, '#3a2018');
+  R(x-1.4, ey+5, 3, 3.4, '#f6f2e6');
+  // stubby arms
+  R(x-R0-3, y+bob+2, 4, 2.4, '#6b665e'); R(x+R0-1, y+bob+2, 4, 2.4, '#6b665e');
+}
+function drawBroom(x, y, dir, k){
+  // k: 0..1 through the sweep arc
+  const a = (dir==='left' ? Math.PI : dir==='right' ? 0 : dir==='up' ? -Math.PI/2 : Math.PI/2)
+          + lerp(-0.8, 0.8, k) * (dir==='up'||dir==='down' ? -1 : 1);
+  const hx = x + Math.cos(a)*7, hy = y + Math.sin(a)*7;
+  const tx = x + Math.cos(a)*17, ty = y + Math.sin(a)*17;
+  cx.strokeStyle = '#8a6a48'; cx.lineWidth = P*1.6;
+  cx.beginPath(); cx.moveTo(hx*P, hy*P); cx.lineTo(tx*P, ty*P); cx.stroke();
+  for (let i=-3;i<=3;i++){
+    const bx2 = tx + Math.cos(a+Math.PI/2)*i*1.5, by2 = ty + Math.sin(a+Math.PI/2)*i*1.5;
+    R(bx2-0.6, by2-0.6, 1.4, 1.4, i%2 ? '#d8b869' : '#c8a860');
+  }
+  cx.globalAlpha = 0.28*(1-Math.abs(k-0.5)*2);
+  circle(tx, ty, 9, '#f4e8d0');
+  cx.globalAlpha = 1;
+}
+
+/* ---------- the battle ---------- */
+function makeSweepBattle(onDone){
+  const st = {
+    usesDash:true,
+    mode:'intro', t:0, evT:0,
+    px:60, py:110, dir:'right', moving:false,
+    dashT:0, dashCd:0, sweepT:0, sweepCd:0, sweepDir:'right',
+    dusts:[], puffs:[], king:null,
+    swept:0, need:6, luck:100,
+    msg:'', msgT:0, msgC:'#ffe9b0', shake:0, won:false,
+  };
+  window.SWEEP = st;
+
+  function addDust(x, y, big){
+    st.dusts.push({ x, y, vx:rnd(-18,18), vy:rnd(-18,18), r: big?7:5.2,
+                    seed: rnd(6.28), wanderT: rnd(0.6), out:false });
+  }
+  function say2(m, c){ st.msg=m; st.msgT=1.1; st.msgC=c||'#ffe9b0'; }
+  function spawnWave(n){ for (let i=0;i<n;i++) addDust(rnd(SW.x0+30, SW.x1-40), rnd(SW.y0+14, SW.y1-14)); }
+  function loseLuck(amount){
+    st.luck -= amount; st.shake = 0.35;
+    if (st.luck <= 0){ st.luck = 0; st.mode='lose'; st.evT=0; SFX.bad(); }
+  }
+  function startKing(){
+    st.mode='king'; st.evT=0;
+    st.king = { x:120, y:110, vx:0, vy:0, pushes:0, needPushes:5, sneezeT:2.2, hurtT:0, out:false };
+    kingLaugh(); st.shake=0.6;
+    say2('HUÌ QÌ — THE DUST KING!', '#ff8a70');
+  }
+  spawnWave(6);
+
+  return {
+    usesDash:true,
+    update(dt){
+      st.t+=dt; st.evT+=dt;
+      st.msgT=Math.max(0,st.msgT-dt); st.shake=Math.max(0,st.shake-dt);
+      st.sweepT=Math.max(0,st.sweepT-dt); st.sweepCd=Math.max(0,st.sweepCd-dt);
+      st.dashT=Math.max(0,st.dashT-dt); st.dashCd=Math.max(0,st.dashCd-dt);
+      updateParts(dt);
+
+      if (st.mode==='intro'){ if (st.evT>1.5 || just.a){ st.mode='play'; say2('Sweep them out the door!'); } return; }
+      if (st.mode==='lose'){
+        if (just.a && st.evT>0.7){
+          st.dusts=[]; st.puffs=[]; st.king=null; st.swept=0; st.luck=100;
+          st.px=60; st.py=110; st.mode='play'; st.evT=0; spawnWave(6);
+        }
+        return;
+      }
+      if (st.mode==='win'){
+        if (st.evT>2.4 || (just.a && st.evT>1)){ popScene(); onDone(); }
+        return;
+      }
+
+      /* ---- player ---- */
+      let vx=0, vy=0;
+      if (keys.left) vx=-1; else if (keys.right) vx=1;
+      if (keys.up) vy=-1; else if (keys.down) vy=1;
+      st.moving = !!(vx||vy);
+      if (vx&&vy){ vx*=0.707; vy*=0.707; }
+      if (vx<0) st.dir='left'; else if (vx>0) st.dir='right';
+      else if (vy<0) st.dir='up'; else if (vy>0) st.dir='down';
+      if (just.dash && st.dashCd<=0){ st.dashT=0.15; st.dashCd=0.6; SFX.dash(); }
+      const spd = st.dashT>0 ? 270 : 104;
+      if (st.dashT>0 && !vx && !vy){
+        vx = st.dir==='left'?-1: st.dir==='right'?1:0;
+        vy = st.dir==='up'?-1: st.dir==='down'?1:0;
+      }
+      st.px = clamp(st.px + vx*spd*dt, SW.x0+8, SW.x1-8);
+      st.py = clamp(st.py + vy*spd*dt, SW.y0+10, SW.y1-6);
+      if (st.dashT>0) spawnPart({x:st.px, y:st.py-8, vx:0, vy:0, g:0, life:0.22, t:0, c:playerLook().top||'#e8b028', sz:3});
+
+      /* ---- sweep ---- */
+      if (just.a && st.sweepCd<=0){
+        st.sweepT=0.26; st.sweepCd=0.34; st.sweepDir=st.dir; sweepWhoosh();
+        const ax = st.dir==='left'?-1: st.dir==='right'?1:0;
+        const ay = st.dir==='up'?-1: st.dir==='down'?1:0;
+        const cx0 = st.px + ax*12, cy0 = st.py - 8 + ay*12;
+        for (const d of st.dusts){
+          if (dist(d.x, d.y, cx0, cy0) < 21){
+            const a = Math.atan2(d.y - st.py + 8, d.x - st.px);
+            d.vx += Math.cos(a)*250 + ax*120;
+            d.vy += Math.sin(a)*250 + ay*120;
+            dustPoof(d.x, d.y);
+          }
+        }
+        if (st.king && !st.king.out && dist(st.king.x, st.king.y, cx0, cy0) < 30){
+          const k = st.king;
+          const a = Math.atan2(k.y - st.py + 8, k.x - st.px);
+          k.vx += Math.cos(a)*180 + ax*130; k.vy += Math.sin(a)*180 + ay*70;
+          k.pushes++; k.hurtT = 0.3;
+          dustPoof(k.x, k.y, true); SFX.good();
+          say2(pick(['NYEHH!','my dust!','ACHOO— hey!','rude!']), '#ffe9b0');
+        }
+      }
+
+      /* ---- dust sprites ---- */
+      for (const d of st.dusts){
+        d.wanderT -= dt;
+        if (d.wanderT<=0){ d.wanderT = rnd(0.6,1.4); d.vx += rnd(-20,20); d.vy += rnd(-20,20); }
+        // scurry away from the player a little (they're shy)
+        const dd = dist(d.x,d.y,st.px,st.py-8);
+        if (dd < 24){ const a = Math.atan2(d.y-st.py+8, d.x-st.px); d.vx += Math.cos(a)*210*dt; d.vy += Math.sin(a)*210*dt; }
+        // shy of walls: drift back toward open floor so nothing pins in a corner
+        if (d.y < SW.y0+16) d.vy += 70*dt;
+        if (d.y > SW.y1-16) d.vy -= 70*dt;
+        if (d.x < SW.x0+16) d.vx += 70*dt;
+        d.x += d.vx*dt; d.y += d.vy*dt;
+        d.vx *= 0.962; d.vy *= 0.962;
+        // walls (door gap on the right)
+        if (d.x < SW.x0+d.r){ d.x = SW.x0+d.r; d.vx = Math.abs(d.vx)*0.6; }
+        if (d.y < SW.y0+d.r){ d.y = SW.y0+d.r; d.vy = Math.abs(d.vy)*0.6; }
+        if (d.y > SW.y1-d.r){ d.y = SW.y1-d.r; d.vy = -Math.abs(d.vy)*0.6; }
+        if (d.x > SW.x1-d.r){
+          if (d.y > SW.doorY0 && d.y < SW.doorY1){
+            if (d.x > SW.x1+6){ d.out = true; }
+          } else { d.x = SW.x1-d.r; d.vx = -Math.abs(d.vx)*0.6; }
+        }
+        // bumping the player costs a little luck
+        if (dd < 11 && st.dashT<=0 && !d.bumpCd){
+          d.bumpCd = 0.9; loseLuck(6);
+          spawnPart({x:st.px, y:st.py-12, vx:0, vy:-20, g:0, life:0.5, t:0, c:'#c8362a', sz:2});
+        }
+        if (d.bumpCd) d.bumpCd = Math.max(0, d.bumpCd - dt);
+      }
+      const before = st.dusts.length;
+      st.dusts = st.dusts.filter(d=>{
+        if (d.out){ st.swept++; dustPoof(SW.x1+4, d.y, true); SFX.sparkle(); return false; }
+        return true;
+      });
+      if (st.dusts.length !== before && st.mode==='play'){
+        if (st.swept >= st.need && !st.king) startKing();
+        else if (st.dusts.length===0 && st.swept < st.need) spawnWave(3);
+        else say2(pick(['Out you go!','Swept!','That is ONE.','bye bye bad luck']), '#7ce87c');
+      }
+
+      /* ---- the Dust King ---- */
+      if (st.king && !st.king.out){
+        const k = st.king;
+        k.hurtT = Math.max(0, k.hurtT-dt);
+        k.x += k.vx*dt; k.y += k.vy*dt;
+        k.vx *= 0.955; k.vy *= 0.955;
+        // he waddles back toward the middle of the room, away from the door
+        const home = 130;
+        k.vx += (home - k.x) * 0.5 * dt;
+        k.vy += (110 - k.y) * 0.4 * dt;
+        if (k.x < SW.x0+16){ k.x = SW.x0+16; k.vx = Math.abs(k.vx)*0.5; }
+        if (k.y < SW.y0+16){ k.y = SW.y0+16; k.vy = Math.abs(k.vy)*0.5; }
+        if (k.y > SW.y1-14){ k.y = SW.y1-14; k.vy = -Math.abs(k.vy)*0.5; }
+        if (k.x > SW.x1-14){
+          if (k.y > SW.doorY0 && k.y < SW.doorY1 && k.pushes >= 3){
+            if (k.x > SW.x1+10) k.out = true;
+          } else { k.x = SW.x1-14; k.vx = -Math.abs(k.vx)*0.5; }
+        }
+        // sneeze attack: puffs toward the player
+        k.sneezeT -= dt;
+        if (k.sneezeT <= 0){
+          k.sneezeT = 2.6;
+          const a0 = Math.atan2(st.py-8-k.y, st.px-k.x);
+          for (let i=-1;i<=1;i++){
+            st.puffs.push({ x:k.x, y:k.y, vx:Math.cos(a0+i*0.32)*74, vy:Math.sin(a0+i*0.32)*74, t:0 });
+          }
+          noiseHit(0.3, 0.35); tone(150, 0.2, 'sawtooth', 0.2);
+          say2('ACHOOO!', '#ffd0a0');
+        }
+        if (dist(k.x, k.y, st.px, st.py-8) < 20 && st.dashT<=0 && !k.bumpCd){
+          k.bumpCd = 1; loseLuck(8);
+        }
+        if (k.bumpCd) k.bumpCd = Math.max(0, k.bumpCd-dt);
+        // he keeps shedding little dust
+        if (Math.random() < dt*0.7 && st.dusts.length < 7) addDust(k.x+rnd(-10,10), k.y+rnd(-8,8));
+      }
+      if (st.king && st.king.out && st.mode!=='win'){
+        st.mode='win'; st.evT=0; st.won=true;
+        SFX.win(); dustPoof(SW.x1+6, st.king.y, true);
+        burst(SW.x1, st.king.y, ['#f2b632','#ffe98a','#7ce87c'], 40, 80);
+      }
+      // puffs
+      for (const pf of st.puffs){
+        pf.t += dt; pf.x += pf.vx*dt; pf.y += pf.vy*dt;
+        if (dist(pf.x, pf.y, st.px, st.py-8) < 10 && st.dashT<=0 && !pf.hit){
+          pf.hit = true; loseLuck(9); dustPoof(pf.x, pf.y);
+        }
+      }
+      st.puffs = st.puffs.filter(pf=> !pf.hit && pf.t < 2.4 && pf.x>SW.x0 && pf.x<SW.x1+8 && pf.y>SW.y0 && pf.y<SW.y1);
+    },
+
+    render(){
+      const shx = st.shake>0 ? Math.round(Math.sin(st.t*70)*st.shake*3) : 0;
+      cx.save(); cx.translate(shx*P, 0);
+      /* room */
+      R(0,0,LW,LH,'#5a4432');
+      R(SW.x0-8, SW.y0-14, SW.x1-SW.x0+16, 14, '#7a5a40');           // back wall
+      for (let i=0;i<LW;i+=22) R(i, SW.y0-14, 1, 14, 'rgba(0,0,0,0.12)');
+      R(SW.x0-8, SW.y0-2, SW.x1-SW.x0+16, 3, '#4a3424');
+      R(SW.x0-8, SW.y0, SW.x1-SW.x0+16, SW.y1-SW.y0+8, '#9a7048');    // floor
+      for (let i=SW.x0-8;i<SW.x1+8;i+=20) R(i, SW.y0, 1, SW.y1-SW.y0+8, 'rgba(0,0,0,0.1)');
+      for (let j=SW.y0;j<SW.y1+8;j+=16) R(SW.x0-8, j, SW.x1-SW.x0+16, 1, 'rgba(0,0,0,0.08)');
+      R(SW.x0+40, SW.y0+16, 120, 44, '#b04434'); R(SW.x0+44, SW.y0+20, 112, 36, '#c85440');   // rug
+      // wall decor
+      R(SW.x0+18, SW.y0-12, 10, 10, '#d43424'); hanzi('福', SW.x0+23, SW.y0-7, 6, '#f2b632');
+      drawLantern(SW.x0+60, SW.y0-14, 0.7, true, st.t);
+      drawLantern(SW.x1-60, SW.y0-14, 0.7, true, st.t+1.2);
+      /* the open door on the right — the goal */
+      R(SW.x1, SW.y0-2, 8, SW.y1-SW.y0+8, '#3a2a1e');
+      R(SW.x1, SW.doorY0, 10, SW.doorY1-SW.doorY0, '#1b2a3c');
+      const gl = 0.25 + Math.sin(st.t*3)*0.08;
+      cx.globalAlpha = gl; R(SW.x1+1, SW.doorY0+2, 8, SW.doorY1-SW.doorY0-4, '#8ab4e0'); cx.globalAlpha = 1;
+      R(SW.x1-2, SW.doorY0-3, 4, 3, '#5a3828'); R(SW.x1-2, SW.doorY1, 4, 3, '#5a3828');
+      T('OUT →', SW.x1-30, (SW.doorY0+SW.doorY1)/2-3, 5.4, Math.sin(st.t*4)>0?'#ffe9b0':'#c8a860');
+      // Auntie Hua watching from the corner
+      drawPerson(SW.x0+8, SW.y1+4, {...NPCS.hua.look, dir:'right'}, st.t);
+      /* dusts + king + player, sorted by y */
+      const items = [];
+      for (const d of st.dusts) items.push({y:d.y, f:()=> drawDust(d.x, d.y, d.r, st.t, d.seed, !!st.king)});
+      if (st.king && !st.king.out) items.push({y:st.king.y, f:()=> drawDustKing(st.king.x, st.king.y, st.t, st.king.hurtT)});
+      for (const pf of st.puffs) items.push({y:pf.y, f:()=>{ circle(pf.x, pf.y, 3.4, '#8f8880'); circle(pf.x-1, pf.y-1, 1.6, '#c4bcb0'); }});
+      items.push({y:st.py+1, f:()=>{
+        drawPerson(st.px, st.py, {...playerLook(), dir:st.dir, walk:st.moving||st.dashT>0}, st.t);
+        if (st.sweepT>0) drawBroom(st.px, st.py-9, st.sweepDir, 1-st.sweepT/0.26);
+        else { // broom at rest
+          const ax = st.dir==='left'?-1:1;
+          R(st.px+ax*7, st.py-16, 1.6, 15, '#8a6a48');
+          R(st.px+ax*7-2, st.py-3, 5, 3, '#c8a860');
+        }
+      }});
+      items.sort((a,b)=>a.y-b.y);
+      for (const it of items) it.f();
+      drawParts(0,0);
+      cx.restore();
+
+      /* HUD */
+      mgHeader("AUNTIE HUA'S BIG SWEEP", 'out with the old luck!');
+      // luck meter
+      T('LUCK', 10, 30, 5.4, '#f2b632');
+      R(34, 30, 84, 7, 'rgba(20,12,16,0.85)');
+      R(34, 30, 84, 1, '#6a5a48'); R(34, 36, 84, 1, '#6a5a48');
+      R(35, 31, 82*clamp(st.luck/100,0,1), 5, st.luck>40 ? '#e03c28' : '#ff8a70');
+      // progress / king HP
+      if (st.king && !st.king.out){
+        T('DUST KING', 196, 30, 5.4, '#cfc0a8');
+        R(246, 30, 66, 7, 'rgba(20,12,16,0.85)');
+        for (let i=0;i<st.king.needPushes;i++)
+          R(247.5+i*13, 31.2, 11.5, 4.6, i < st.king.pushes ? '#8f8880' : '#3a352f');
+      } else {
+        T('DUST SWEPT  '+Math.min(st.swept,st.need)+' / '+st.need, 312, 30, 5.4, '#cfc0a8', 'right');
+      }
+      // dash pip
+      R(276, 42, 38, 4, 'rgba(20,12,16,0.85)');
+      R(276, 42, 38*(1-st.dashCd/0.6), 4, st.dashCd<=0 ? '#7ce87c' : '#8a7c6a');
+      T('DASH', 254, 41, 4.6, '#8a7c6a');
+
+      if (st.mode==='intro'){
+        box(26, 60, 268, 52);
+        T('OUT WITH THE OLD LUCK!', LW/2, 66, 8, '#f2b632','center');
+        T('Sweep every dust bunny out the door before the new year.', LW/2, 80, 5.6, '#f4e8d0','center');
+        T('◀▶▲▼ move · ✓ SWEEP · SPACE dash', LW/2, 92, 5.6, '#ffe9b0','center');
+        T('(and do NOT let them touch you)', LW/2, 102, 5, '#cfc0a8','center');
+      } else if (st.mode==='lose'){
+        box(40, 62, 240, 50);
+        T('AI-YA! THE DUST WINS…', LW/2, 68, 7.4, '#ff8a70','center');
+        T('Auntie Hua hands you the broom again.', LW/2, 82, 5.6, '#f4e8d0','center');
+        T('✓ TRY AGAIN', LW/2, 96, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+      } else if (st.mode==='win'){
+        box(34, 58, 252, 56);
+        T('SPOTLESS!', LW/2, 64, 9, '#f2b632','center');
+        T('Huì Qì the Dust King tumbles out the door,', LW/2, 79, 5.6, '#f4e8d0','center');
+        T('taking last year’s bad luck with him.', LW/2, 88, 5.6, '#f4e8d0','center');
+        T('✓', LW/2, 100, 6, '#cfc0a8','center');
+      }
+      if (st.msgT>0 && st.mode!=='win') T(st.msg, LW/2, 120, 6.6, st.msgC, 'center');
     }
   };
 }
@@ -3771,6 +4141,7 @@ function makeNianBattle(){
     }
   }
   return {
+    usesDash:true,
     enter(){ playMusic(4); },
     update(dt){
       st.t+=dt; st.evT+=dt;
@@ -4150,10 +4521,13 @@ const talks = {
     const H = port('hua');
     if (G.ch===1 && G.step===2) say([
       {who:'Auntie Hua', port:H, text:"Ai-ya, this DUST! Before the new year arrives we sweep everything — swoosh, out with the old year's bad luck!"},
-      {who:'Auntie Hua', port:H, text:"Grab that broom. Put your back into it!"},
-    ], ()=> pushScene(makeHold({title:"AUNTIE HUA'S BIG SWEEP", flavor:'Out with the old luck!', doneLine:'Room for a whole new year of luck!'}, ()=>{
+      {who:'Auntie Hua', port:H, text:"And I do mean BAD LUCK. Huì Qì. It builds up in the corners all year, and if you let it, it grows… legs."},
+      {who:G.name, port:playerLook(), text:"…Legs?"},
+      {who:'Auntie Hua', port:H, text:"BROOM. NOW. Sweep every last one out that door — and mind their king. He bites. Mostly he sneezes."},
+    ], ()=> pushScene(makeSweepBattle(()=>{
       say([
-        {who:'Auntie Hua', port:H, text:"Beautiful! Now remember the OTHER half of the rule: tomorrow, the broom RESTS."},
+        {who:'Auntie Hua', port:H, text:"HA! Look at him roll! That is a YEAR of bad luck out my door."},
+        {who:'Auntie Hua', port:H, text:"Now remember the OTHER half of the rule: tomorrow, the broom RESTS."},
         {who:'Auntie Hua', port:H, text:"Sweep on New Year's DAY and you sweep the brand-new good luck right out the door! Not in MY house."},
       ], ()=>{ giveScroll('sweep'); setStep(3); });
     })));

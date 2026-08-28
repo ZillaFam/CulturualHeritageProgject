@@ -34,7 +34,7 @@ The game **saves automatically** — you can close it and press CONTINUE later.
 
 | Chapter | Festival | Real history & customs you play through |
 |---|---|---|
-| 1 — The Night of Nian | Lunar New Year (春节) | The legend of the Nian monster — fought as a real 3-phase arena boss (dash past its pounces, ember rain and shockwaves while pelting it with Mei's dumplings, echoing the old custom of leaving food out so Nian would fill its belly instead); why red, lanterns & firecrackers; sweeping before New Year; upside-down 福; lucky foods (dumplings, fish); red envelopes; the 15 days to the Lantern Festival |
+| 1 — The Night of Nian | Lunar New Year (春节) | The legend of the Nian monster — fought as a real 3-phase arena boss (dash past its pounces, ember rain and shockwaves while pelting it with Mei's dumplings, echoing the old custom of leaving food out so Nian would fill its belly instead); why red, lanterns & firecrackers; sweeping before New Year (a chase-and-sweep boss fight against Huì Qì 晦气, the Dust King — “bad luck” itself); upside-down 福; lucky foods (dumplings, fish); red envelopes; the 15 days to the Lantern Festival |
 | 2 — The River Remembers | Dragon Boat Festival (端午节) | The true story of the poet Qu Yuan (c. 300 BC); why dragon boats race; zongzi; mugwort & the "five poisons"; UNESCO world heritage (2009) |
 | 3 — The Roundest Moon | Mid-Autumn Festival (中秋节) | The legend of Chang'e and the Jade Rabbit; mooncakes & family reunion; Tang/Song dynasty history; lantern riddles |
 
