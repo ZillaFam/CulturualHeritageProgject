@@ -7514,43 +7514,109 @@ function drawSpider(x, y, t, hurt){
 }
 function drawPoisonKing(x, y, t, hurt, rage){
   const INKp='#1a1016';
-  const bob = Math.sin(t*2.4)*2;
-  ell(x, y+4, 26, 5, 'rgba(0,0,0,0.3)');
-  // centipede legs down both sides
-  for (let i=0;i<7;i++){
-    const k = Math.sin(t*7 + i)*2;
-    R(x-24+i*7, y-6+k*0.4, 3, 10, INKp); R(x-23.4+i*7, y-5, 1.8, 8, '#a8481c');
-  }
-  // scorpion tail arcing overhead
+  const bob = Math.sin(t*2.4)*1.6;
+  const G0='#2e6a30', G1='#3f9450', G2='#5cc46a', G3='#8ee08a';
+  ell(x, y+4, 27, 5, 'rgba(0,0,0,0.3)');
+
+  /* scorpion tail: thick purple segments curling up beside him */
+  const sway = Math.sin(t*2.1)*1.6;
   for (let i=0;i<6;i++){
-    const a = -1.35 + i*0.34, r = 26 + i*2;
-    const sx = x - 14 + Math.cos(a)*r*0.6, sy = y - 22 - Math.sin(a)*r*0.62 + bob*0.5;
-    circle(sx, sy, 5-i*0.4, INKp); circle(sx, sy, 4.2-i*0.4, i%2?'#8a3a72':'#6a2a5a');
+    const a = -0.9 + i*0.42, r = 15 + i*3.2;
+    const sx = x - 22 - Math.cos(a)*r*0.55 + sway*(i/5);
+    const sy = y - 8 - Math.sin(a)*r*0.95 + bob*0.5;
+    const sr = 5.6 - i*0.55;
+    circle(sx, sy, sr+0.9, INKp);
+    circle(sx, sy, sr, i%2 ? '#9a4aae' : '#7a3a8a');
+    circle(sx-1, sy-1, sr*0.4, '#c07ad0');
   }
-  const stx = x - 6, sty = y - 48 + bob*0.5;
-  tri(stx-3.6, sty+3, stx, sty-7, stx+3.6, sty+3, INKp);
-  tri(stx-2.4, sty+2.4, stx, sty-5.2, stx+2.4, sty+2.4, '#e8d24a');
-  // toad body
-  ell(x, y-14+bob, 25, 16, INKp); ell(x, y-14+bob, 24, 15, '#5c7a2e');
-  ell(x-4, y-19+bob, 15, 7, '#74963c');
-  for (const [wx,wy] of [[-13,-6],[9,-9],[-2,-3],[14,-5],[-9,-14],[5,-16]])
-    circle(x+wx, y-14+bob+wy*0.4, 2.2, '#8fae4e');
-  ell(x, y-6+bob, 15, 4.4, '#d8d09a');
-  // snake head as the face
-  circle(x, y-30+bob, 11, INKp); circle(x, y-30+bob, 10, '#3f9450');
-  circle(x-3, y-33+bob, 4.4, '#54ad63');
-  R(x+7, y-32+bob, 8, 6, INKp); R(x+7, y-31.4+bob, 7, 4.8, '#3f9450');
-  const flick = Math.sin(t*9)>0 ? 6 : 3.4;
-  R(x+15, y-28.6+bob, flick, 1.4, '#e0403c');
-  // spider eye cluster
-  for (const [ex,ey,r] of [[-5,-33,2.2],[1,-33.6,2.2],[-6,-29,1.6],[2,-29.4,1.6],[-2,-31.4,1.8]]){
-    circle(x+ex, y+ey+bob, r+0.8, INKp);
-    circle(x+ex, y+ey+bob, r, rage ? '#ff3820' : '#ffd23a');
+  const stx = x - 28 + sway, sty = y - 40 + bob*0.5;
+  tri(stx-4, sty+3.6, stx+1, sty-7.6, stx+5, sty+3.6, INKp);
+  tri(stx-2.6, sty+2.8, stx+0.8, sty-5.6, stx+3.6, sty+2.8, '#f2b632');
+  tri(stx-1.2, sty+2, stx+0.7, sty-3.4, stx+2.2, sty+2, '#ffe27a');
+
+  /* rear haunches: strong, rounded, striped */
+  for (const sgn of [-1, 1]){
+    const hx2 = x + sgn*18;
+    circle(hx2, y-9+bob, 9.6, INKp); circle(hx2, y-9+bob, 8.6, G1);
+    circle(hx2 - sgn*2, y-12+bob, 4.2, G2);
+    R(hx2-4, y-5+bob, 8, 2, G0);
+    R(hx2-5.4, y-1, 11, 3.2, INKp);
+    for (let k2=0;k2<3;k2++) R(hx2-4.6+k2*3.4, y-0.6, 2.2, 2.4, '#d8e0a0');
   }
-  R(x-8, y-36+bob, 16, 2.4, INKp);
-  // fangs
-  tri(x-5, y-23+bob, x-3.4, y-18+bob, x-1.8, y-23+bob, '#f6f2e6');
-  tri(x+2, y-23+bob, x+3.6, y-18+bob, x+5.2, y-23+bob, '#f6f2e6');
+
+  /* body: one broad emerald toad mass */
+  ell(x, y-15+bob, 22, 15.5, INKp);
+  ell(x, y-15+bob, 21, 14.5, G1);
+  ell(x-3, y-20+bob, 13, 7.5, G2);
+  ell(x-6, y-23+bob, 6, 3.5, G3);
+  /* centipede armour plates riding the back ridge */
+  for (let i=0;i<5;i++){
+    const px2 = x - 14 + i*7, py2 = y - 27 + bob + Math.abs(i-2)*1.6;
+    R(px2-2.8, py2-2.2, 5.6, 4.6, INKp);
+    R(px2-2.2, py2-1.6, 4.4, 3.4, i%2 ? '#b0502a' : '#8a3a1c');
+    R(px2-2.2, py2-1.6, 4.4, 1, '#d0703a');
+  }
+  /* bright jade warts */
+  for (const [wx,wy,wr] of [[-14,-13,2.2],[12,-11,2.4],[-6,-9,1.8],[7,-17,1.8],[16,-16,1.6],[-17,-18,1.6]]){
+    circle(x+wx, y+wy+bob, wr+0.8, G0);
+    circle(x+wx, y+wy+bob, wr, G2);
+    R(x+wx-0.8, y+wy+bob-0.8, 1, 1, G3);
+  }
+
+  /* pale belly plate with segment lines and a little spider mark */
+  ell(x, y-9+bob, 14.5, 8, INKp);
+  ell(x, y-9+bob, 13.5, 7, '#e8e4c0');
+  for (let i=0;i<3;i++) R(x-11+i*1.4, y-11+bob+i*3.4, 22-i*3, 1, '#c8c49a');
+  circle(x, y-8.4+bob, 1.7, '#6a3a7a');
+  for (const [lx2,ly2] of [[-2.6,-1.4],[2.6,-1.4],[-2.9,0.6],[2.9,0.6]])
+    R(x+lx2-0.5, y-8.4+bob+ly2, 1, 1, '#6a3a7a');
+  /* throat sac, pulsing */
+  const puff = 2.2 + Math.sin(t*4.6)*1.6;
+  ell(x, y-3+bob, 6.5+puff*0.7, 2.6+puff*0.5, INKp);
+  ell(x, y-3+bob, 6+puff*0.7, 2.2+puff*0.5, '#d8e0a0');
+
+  /* front feet planted wide */
+  for (const sgn of [-1, 1]){
+    const fx2 = x + sgn*9;
+    R(fx2-2.6, y-6+bob, 5.2, 6.4, INKp); R(fx2-2, y-5.4+bob, 4, 5.6, G0);
+    R(fx2-3.6, y-0.8, 7.4, 2.6, INKp);
+    for (let k2=0;k2<3;k2++) R(fx2-2.8+k2*2.4, y-0.4, 1.6, 1.8, '#d8e0a0');
+  }
+
+  /* head: wide and heavy, grown out of the body — not a lollipop */
+  ell(x, y-27+bob, 16.5, 9.5, INKp);
+  ell(x, y-27+bob, 15.5, 8.5, G1);
+  ell(x-3, y-30+bob, 9, 4, G2);
+  /* heavy brow */
+  R(x-14, y-32+bob, 28, 2.6, INKp);
+  R(x-13, y-31.6+bob, 26, 1.6, G0);
+  /* big gold eyes with slit pupils, up on the corners */
+  for (const sgn of [-1, 1]){
+    const ex2 = x + sgn*9.5, ey2 = y - 33 + bob;
+    circle(ex2, ey2, 5.4, INKp);
+    circle(ex2, ey2, 4.4, rage ? '#ff5030' : '#ffd23a');
+    circle(ex2 - sgn*1, ey2-1.2, 1.6, rage ? '#ffd0c0' : '#fff2c0');
+    R(ex2-0.9, ey2-3.2, 1.8, 6.4, INKp);
+  }
+  /* nostrils + a wide grim mouth with up-fangs */
+  R(x-2.8, y-29+bob, 1.4, 1.4, INKp); R(x+1.6, y-29+bob, 1.4, 1.4, INKp);
+  R(x-11.5, y-23.4+bob, 23, 1.8, INKp);
+  R(x-13, y-24.4+bob, 3, 2.6, INKp); R(x+10, y-24.4+bob, 3, 2.6, INKp);
+  tri(x-6.4, y-23+bob, x-4.8, y-27.6+bob, x-3.2, y-23+bob, INKp);
+  tri(x-5.8, y-23.4+bob, x-4.8, y-26.6+bob, x-3.8, y-23.4+bob, '#f6f2e6');
+  tri(x+3.2, y-23+bob, x+4.8, y-27.6+bob, x+6.4, y-23+bob, INKp);
+  tri(x+3.8, y-23.4+bob, x+4.8, y-26.6+bob, x+5.8, y-23.4+bob, '#f6f2e6');
+
+  /* the crown — he IS the king */
+  const cy2 = y - 40 + bob;
+  R(x-6.4, cy2, 12.8, 3.6, INKp);
+  R(x-5.6, cy2+0.6, 11.2, 2.4, '#f2b632');
+  for (const [px3, ph3] of [[-4.6, 4.6], [0, 6], [4.6, 4.6]]){
+    tri(x+px3-2.2, cy2+0.8, x+px3, cy2-ph3, x+px3+2.2, cy2+0.8, INKp);
+    tri(x+px3-1.3, cy2+0.6, x+px3, cy2-ph3+1.4, x+px3+1.3, cy2+0.6, '#f2b632');
+  }
+  R(x-1, cy2-6.8, 2, 2, INKp); R(x-0.6, cy2-6.4, 1.2, 1.2, '#e0403c');
+
   if (hurt>0) glow(x, y-20, 34, '#ffffff', 0.4*hurt);
   if (rage) glow(x, y-30, 30, '#ff3820', 0.2);
 }
