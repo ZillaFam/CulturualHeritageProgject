@@ -5872,12 +5872,18 @@ const titleScene = {
         const s=this.save; G.name=s.name; G.ch=Math.max(1,s.ch); G.step=s.step; G.scrolls=s.scrolls||[];
         if (s.look) G.look = s.look;
         fadeOut(()=>{ swapScene(makeChapterCard(G.ch, ()=>{ swapScene(world); fadeIn(); })); fadeIn(); });
+      } else if (o==='WATCH THE ENDING'){
+        const s=this.save; G.name=s.name; G.scrolls=s.scrolls||[]; if (s.look) G.look = s.look;
+        fadeOut(()=>{ swapScene(creditsScene); fadeIn(); });
       } else if (o==='HOW TO PLAY'){ pushScene(makeHowToCard(()=> popScene())); }
       else if (o==='JOURNAL'){ pushScene(makeJournal()); }
     }
     if (Math.random()<dt*1.2) spawnPart({x:rnd(LW), y:186, vx:rnd(-3,3), vy:rnd(-14,-7), g:0, life:rnd(3,5), t:0, c:pick(['#ffb050','#ff7040']), sz:1.6});
   },
-  menu(){ return this.save && this.save.ch>0 ? ['CONTINUE','NEW GAME','HOW TO PLAY','JOURNAL'] : ['NEW GAME','HOW TO PLAY','JOURNAL']; },
+  menu(){
+    if (this.save && this.save.ch>=4) return ['WATCH THE ENDING','NEW GAME','HOW TO PLAY','JOURNAL'];
+    return this.save && this.save.ch>0 ? ['CONTINUE','NEW GAME','HOW TO PLAY','JOURNAL'] : ['NEW GAME','HOW TO PLAY','JOURNAL'];
+  },
   render(){
     // night sky backdrop
     R(0,0,LW,LH,'#181c38');
@@ -6119,6 +6125,7 @@ const homeScene = {
 
 /* ---------- chapter title cards ---------- */
 function makeChapterCard(ch, onDone){
+  if (ch < 1 || ch > 3){ return { update(){ onDone(); }, render(){ R(0,0,LW,LH,'#141020'); } }; }
   const CARDS = {
     1:{ big:'THE NIGHT OF NIAN', small:'Chapter One · Lunar New Year', h:'春节', draw:(t)=>{ drawLantern(70,60,1.6,true,t); drawLantern(250,60,1.6,true,t+1); } },
     2:{ big:'THE RIVER REMEMBERS', small:'Chapter Two · Dragon Boat Festival', h:'端午节', draw:(t)=>{ drawBoat(160, 120, t, {crew:true}); } },
