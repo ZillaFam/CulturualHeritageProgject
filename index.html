@@ -7535,22 +7535,6 @@ function drawPoisonKing(x, y, t, hurt, rage){
   const G0='#2e6a30', G1='#3f9450', G2='#5cc46a', G3='#8ee08a';
   ell(x, y+4, 27, 5, 'rgba(0,0,0,0.3)');
 
-  /* scorpion tail: thick purple segments curling up beside him */
-  const sway = Math.sin(t*2.1)*1.6;
-  for (let i=0;i<6;i++){
-    const a = -0.9 + i*0.42, r = 15 + i*3.2;
-    const sx = x - 22 - Math.cos(a)*r*0.55 + sway*(i/5);
-    const sy = y - 8 - Math.sin(a)*r*0.95 + bob*0.5;
-    const sr = 5.6 - i*0.55;
-    circle(sx, sy, sr+0.9, INKp);
-    circle(sx, sy, sr, i%2 ? '#9a4aae' : '#7a3a8a');
-    circle(sx-1, sy-1, sr*0.4, '#c07ad0');
-  }
-  const stx = x - 28 + sway, sty = y - 40 + bob*0.5;
-  tri(stx-4, sty+3.6, stx+1, sty-7.6, stx+5, sty+3.6, INKp);
-  tri(stx-2.6, sty+2.8, stx+0.8, sty-5.6, stx+3.6, sty+2.8, '#f2b632');
-  tri(stx-1.2, sty+2, stx+0.7, sty-3.4, stx+2.2, sty+2, '#ffe27a');
-
   /* rear haunches: strong, rounded, striped */
   for (const sgn of [-1, 1]){
     const hx2 = x + sgn*18;
