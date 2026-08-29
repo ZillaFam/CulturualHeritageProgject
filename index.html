@@ -390,22 +390,39 @@ function swapScene(s){ while(stack.length) popScene(); pushScene(s); }
 function topScene(){ return stack[stack.length-1]; }
 
 /* ---------- main loop ---------- */
-let lastT = performance.now(), acc = 0;
+let lastT = performance.now(), acc = 0, crashN = 0;
 function frame(now){
   requestAnimationFrame(frame);
   let dt = (now - lastT)/1000; lastT = now;
   if (dt > 0.25) dt = 0.25;
   G.time += dt;
   const s = topScene();
-  if (s){
-    // SPACE dashes only in scenes that use it; everywhere else it confirms
-    if (just.dash && !s.usesDash) just.a = true;
-    if (s.update) s.update(dt);
-    // render from the lowest opaque scene upward (overlays draw on top)
-    let start = stack.length-1;
-    while (start>0 && stack[start].overlay) start--;
-    for (let i=start;i<stack.length;i++) if (stack[i].render) stack[i].render();
-    drawCursor();
+  try {
+    if (s){
+      // SPACE dashes only in scenes that use it; everywhere else it confirms
+      if (just.dash && !s.usesDash) just.a = true;
+      if (s.update) s.update(dt);
+      // render from the lowest opaque scene upward (overlays draw on top)
+      let start = stack.length-1;
+      while (start>0 && stack[start].overlay) start--;
+      for (let i=start;i<stack.length;i++) if (stack[i].render) stack[i].render();
+      drawCursor();
+    }
+    crashN = 0;
+  } catch(err){
+    // one broken frame must never freeze the whole game on a black screen:
+    // after repeated crashes, drop the broken scene (or fall back to the title)
+    crashN++;
+    try { console.error('scene crash:', err); } catch(e2){}
+    if (crashN > 12){
+      crashN = 0;
+      try {
+        typingMode = false;
+        fade.a = 0; fade.target = 0; fade.cb = null;
+        if (stack.length > 1) popScene();
+        else swapScene(titleScene);
+      } catch(e3){ stack.length = 0; try { pushScene(titleScene); } catch(e4){} }
+    }
   }
   for (const k in just) just[k] = false;
   tapPos = null;
