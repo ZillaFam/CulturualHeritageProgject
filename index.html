@@ -3404,20 +3404,28 @@ function makeSweepBattle(onDone){
         }
         // bumping the player costs a little luck
         if (dd < 11 && st.dashT<=0 && !d.bumpCd){
-          d.bumpCd = 0.9; loseLuck(6);
+          d.bumpCd = 0.9; loseLuck(5);
           spawnPart({x:st.px, y:st.py-12, vx:0, vy:-20, g:0, life:0.5, t:0, c:'#c8362a', sz:2});
         }
         if (d.bumpCd) d.bumpCd = Math.max(0, d.bumpCd - dt);
       }
       const before = st.dusts.length;
       st.dusts = st.dusts.filter(d=>{
-        if (d.out){ st.swept++; dustPoof(SW.x1+4, d.y, true); SFX.sparkle(); return false; }
+        if (d.out){
+          st.swept++;
+          dustPoof(SW.x1+4, d.y, true); SFX.sparkle();
+          if (st.luck < 100){                       // good sweeping brings the luck back
+            st.luck = Math.min(100, st.luck + 12);
+            burst(SW.x1-6, d.y, ['#7ce87c','#ffe98a'], 12, 40);
+          }
+          return false;
+        }
         return true;
       });
       if (st.dusts.length !== before && st.mode==='play'){
         if (st.swept >= st.need && !st.king) startKing();
         else if (st.dusts.length===0 && st.swept < st.need) spawnWave(3);
-        else say2(pick(['Out you go!','Swept!','That is ONE.','bye bye bad luck']), '#7ce87c');
+        else say2(pick(['Out you go! +LUCK','Swept! +LUCK','That is ONE. +LUCK','bye bye bad luck +LUCK']), '#7ce87c');
       }
 
       /* ---- the Dust King ---- */
@@ -5459,8 +5467,8 @@ const BRIEF = {
     keys:[['#LRUD','move'],
           ['CLICK','sweep'],
           ['SPACE','dash']],
-    extra:['Sprites RUN from the broom — come at them from',
-           'behind so every sweep pushes them doorward.'],
+    extra:['Sprites RUN from the broom — herd them from behind.',
+           'Every one swept OUT gives some LUCK back!'],
     art(t){ drawDust(52, 62, 6, t, 1, false); drawDust(78, 78, 5, t, 3, false);
             drawBroom(58, 84, 0.3, (Math.sin(t*3)+1)/2); }
   },
