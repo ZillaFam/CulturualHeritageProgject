@@ -509,10 +509,25 @@ function mgong(when=0, vol=0.2){
   tone(292, 1.3, 'sine', vol*0.5, when, musicGain);
   tone(392, 0.7, 'sine', vol*0.25, when, musicGain);
 }
-function mdrum(when=0, vol=0.5){
+function mdrum(when=0, vol=0.5, dest){
   if (!AC) return;
-  tone(72, 0.16, 'sine', vol, when, musicGain);
-  tone(48, 0.22, 'sine', vol*0.7, when, musicGain);
+  const t0 = AC.currentTime + when, out = dest || musicGain;
+  // membrane BOM: fast pitch drop gives it body even on tiny speakers
+  const o = AC.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(185, t0);
+  o.frequency.exponentialRampToValueAtTime(58, t0 + 0.12);
+  const g = AC.createGain();
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.24);
+  o.connect(g); g.connect(out); o.start(t0); o.stop(t0 + 0.26);
+  // skin snap on the attack
+  const o2 = AC.createOscillator(); o2.type = 'triangle';
+  o2.frequency.setValueAtTime(330, t0);
+  o2.frequency.exponentialRampToValueAtTime(150, t0 + 0.03);
+  const g2 = AC.createGain();
+  g2.gain.setValueAtTime(vol*0.55, t0);
+  g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
+  o2.connect(g2); g2.connect(out); o2.start(t0); o2.stop(t0 + 0.06);
 }
 
 /* ---------- songs (midi numbers; -1 = hold, 0 = rest) ---------- */
@@ -1764,7 +1779,12 @@ function drawHouse(h, decor){
     R(dx+2.4, y+ht-24.6, 8.2, 8.2, INK);
     R(dx+3, y+ht-24, 7, 7, '#d43424');
     R(dx+3.4, y+ht-23.6, 6.2, 1, '#f06848');
-    hanzi('福', dx+6.5, y+ht-20.2, 5, '#f2b632');
+    // the fu hangs UPSIDE DOWN on purpose: dào 'upside down' = dào 'arrives'
+    cx.save();
+    cx.translate((dx+6.5)*P, (y+ht-20.2)*P);
+    cx.rotate(Math.PI);
+    hanzi('福', 0, 0, 5, '#f2b632');
+    cx.restore();
   }
   if (decor && decor.lanterns){
     drawLantern(x+4, y+2, 0.8, lit, G.time);
@@ -2213,7 +2233,7 @@ const SCROLLS = {
   unesco:    { ch:2, title:'A World Treasure',
     text:"In 2009, the Dragon Boat Festival became the first Chinese festival added to UNESCO's list of the Intangible Cultural Heritage of Humanity. The whole world now helps protect its story." },
   herbs:     { ch:2, title:'The Poison Month',
-    text:"The festival falls on the 5th day of the 5th lunar month, when summer heat wakes up sickness and stinging pests. Families hang mugwort and calamus herbs on their doors and wear fragrant sachets to drive the 'five poisons' away." },
+    text:"The festival falls on the 5th day of the 5th lunar month, the start of hot weather — when venomous creatures like snakes, scorpions and centipedes become active. For centuries, families in China have hung mugwort and calamus herbs at the door and worn fragrant sachets to guard against the 'five poisons.'" },
   change:    { ch:3, title:"Chang'e Flies to the Moon",
     text:"The hero Hou Yi shot down nine of ten burning suns and was given an elixir of immortality. When a thief tried to steal it, Hou Yi's wife Chang'e drank it to keep it safe and floated up to the moon, where she lives with the Jade Rabbit. Hou Yi set out her favorite foods under the full moon every year." },
   mooncake:  { ch:3, title:'Mooncakes Mean Reunion',
@@ -3301,14 +3321,18 @@ function makeSweepBattle(onDone){
 
       if (st.mode==='intro'){ if (st.evT>1.5 || just.a){ st.mode='play'; say2('Sweep them out the door!'); } return; }
       if (st.mode==='lose'){
-        if (just.a && st.evT>0.7){
+        if ((just.a || just.click) && st.evT>0.7){
           st.dusts=[]; st.puffs=[]; st.king=null; st.swept=0; st.luck=100;
           st.px=60; st.py=110; st.mode='play'; st.evT=0; spawnWave(6);
+        }
+        if (just.b && st.evT>0.7){                  // step outside; Auntie Hua will restart you
+          popScene();
+          say([{who:'Auntie Hua', port:port('hua'), text:"Tt! The dust does not win forever. Catch your breath and come back — my broom isn't going anywhere."}]);
         }
         return;
       }
       if (st.mode==='win'){
-        if (st.evT>2.4 || (just.a && st.evT>1)){ popScene(); onDone(); }
+        if (st.evT>2.4 || ((just.a || just.click) && st.evT>1)){ popScene(); onDone(); }
         return;
       }
 
@@ -3519,16 +3543,17 @@ function makeSweepBattle(onDone){
         T('ARROWS move · CLICK to sweep at the cursor · SPACE dash', LW/2, 92, 5.6, '#ffe9b0','center');
         T('(and do NOT let them touch you)', LW/2, 102, 5, '#cfc0a8','center');
       } else if (st.mode==='lose'){
-        box(40, 62, 240, 50);
+        box(40, 60, 240, 56);
         T('AI-YA! THE DUST WINS…', LW/2, 68, 7.4, '#ff8a70','center');
         T('Auntie Hua hands you the broom again.', LW/2, 82, 5.6, '#f4e8d0','center');
-        T('✓ TRY AGAIN', LW/2, 96, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+        T('CLICK to try again  (or Z)', LW/2, 94, 6.6, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+        T('✕ step outside', LW/2, 104, 5.2, '#cfc0a8','center');
       } else if (st.mode==='win'){
         box(34, 58, 252, 56);
         T('SPOTLESS!', LW/2, 64, 9, '#f2b632','center');
         T('Huì Qì the Dust King tumbles out the door,', LW/2, 79, 5.6, '#f4e8d0','center');
         T('taking last year’s bad luck with him.', LW/2, 88, 5.6, '#f4e8d0','center');
-        T('✓', LW/2, 100, 6, '#cfc0a8','center');
+        T('CLICK', LW/2, 100, 5.6, '#cfc0a8','center');
       }
       if (st.msgT>0 && st.mode!=='win') T(st.msg, LW/2, 120, 6.6, st.msgC, 'center');
     }
@@ -3782,7 +3807,7 @@ function makeDumplingGame(onDone){
         box(46, 58, 228, 52);
         T(g, LW/2, 64, 9, c, 'center');
         T('A whole steamer of golden-ingot dumplings!', LW/2, 80, 5.6, '#f4e8d0', 'center');
-        T('✓', LW/2, 94, 6, '#cfc0a8', 'center');
+        T('CLICK', LW/2, 94, 5.6, '#cfc0a8', 'center');
       }
     }
   };
@@ -3915,7 +3940,7 @@ function makeZongziGame(onDone){
         cx.globalAlpha = 0.35 + Math.sin(st.t*4)*0.12;
         tri(cxp-ts, cyp, cxp+ts, cyp, cxp, cyp+40, '#f2b632');
         cx.globalAlpha = 1;
-        T('◀ ▶ fold to match the golden outline, then ✓', 160, 146, 5.2, '#cfc0a8', 'center');
+        T('◀ ▶ fold to match the golden outline, then CLICK', 160, 146, 5.2, '#cfc0a8', 'center');
       }
       // rice inside
       if (st.stage>=1){
@@ -3962,7 +3987,7 @@ function makeZongziGame(onDone){
         box(46, 58, 228, 52);
         T(g, LW/2, 64, 9, c, 'center');
         T('A perfect pyramid of zongzi, tied tight!', LW/2, 80, 5.6, '#f4e8d0', 'center');
-        T('✓', LW/2, 94, 6, '#cfc0a8', 'center');
+        T('CLICK', LW/2, 94, 5.6, '#cfc0a8', 'center');
       }
     }
   };
@@ -4095,7 +4120,7 @@ function makeBoatRace(onDone){
       /* drum */
       st.strokeCd = Math.max(0, st.strokeCd - dt);
       st.beatT += dt;
-      if (st.beatT >= BEAT){ st.beatT -= BEAT; st.beatN++; mdrum(0, st.beatN%4===0?0.5:0.3); }
+      if (st.beatT >= BEAT){ st.beatT -= BEAT; st.beatN++; mdrum(0, st.beatN%4===0?0.85:0.55, masterGain); }
 
       /* paddling */
       if (just.left)  stroke('left');
@@ -4233,18 +4258,18 @@ function makeBoatRace(onDone){
         T('ROW FOR QU YUAN!', LW/2, 72, 8, '#f2b632','center');
         T('◀ ▶ alternate paddles ON the drum · ▲ ▼ change lane', LW/2, 88, 5.2, '#f4e8d0','center');
         T('SPACE surges · grab zongzi · dodge rocks and logs', LW/2, 98, 5.2, '#f4e8d0','center');
-        T('✓ to start', LW/2, 110, 5.4, '#ffe9b0','center');
+        T('CLICK to start', LW/2, 110, 5.4, '#ffe9b0','center');
       } else if (st.mode==='win'){
         box(40, 62, 240, 54);
         T('FIRST PLACE!', LW/2, 68, 9, '#f2b632','center');
         T('Perfect strokes: '+st.perfect+' / '+st.strokes+'   best combo ×'+st.best, LW/2, 84, 5.4, '#f4e8d0','center');
         T('The drums thunder like they did for Qu Yuan.', LW/2, 94, 5.2, '#cfc0a8','center');
-        T('✓', LW/2, 106, 6, '#cfc0a8','center');
+        T('CLICK', LW/2, 106, 5.6, '#cfc0a8','center');
       } else if (st.mode==='lose'){
         box(40, 62, 240, 50);
         T('THEY BEAT YOU TO IT!', LW/2, 68, 8, '#ff8a70','center');
         T('Stay with the drum — every beat is speed.', LW/2, 84, 5.4, '#f4e8d0','center');
-        T('✓ RACE AGAIN', LW/2, 96, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+        T('CLICK — RACE AGAIN', LW/2, 96, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
       }
     }
   };
@@ -4608,10 +4633,10 @@ function makeMooncakeGame(onDone){
             const flashOn = Math.sin(st.t*14) > -0.2;
             box(96, 60, 128, 20, {border: flashOn ? '#ffe98a' : '#c8a860'});
             T('BRUSH THE EGG WASH!', 160, 65, 6.6, flashOn ? '#ffe98a' : '#f4e8d0','center');
-            T('click  ·  or  ✓', 160, 73, 5, '#cfc0a8','center');
+            T('CLICK  ·  or Z', 160, 73, 5, '#cfc0a8','center');
           } else {
             T('PULL THE TRAY when the colour hits GOLDEN', 160, 62, 6, '#ffe9b0','center');
-            T('click  ·  or  ✓', 160, 71, 5.2, '#cfc0a8','center');
+            T('CLICK  ·  or Z', 160, 71, 5.2, '#cfc0a8','center');
           }
         }
         if (st.wash && !st.done) T('✓ egg wash', 264, 160, 5, '#7ce87c','center');
@@ -4623,7 +4648,7 @@ function makeMooncakeGame(onDone){
           T('A tray of mooncakes — round like the moon,', 160, 118, 5.6, '#f4e8d0','center');
           T('round like a family all in one place.', 160, 127, 5.6, '#f4e8d0','center');
           T('tuányuán  团圆  ·  reunion', 160, 139, 6, '#ffe9b0','center');
-          T('✓ to continue', 160, 151, 5.2, '#cfc0a8','center');
+          T('CLICK to continue', 160, 151, 5.2, '#cfc0a8','center');
         }
         cx.restore();
         return;
@@ -4904,7 +4929,7 @@ function makeQuizGame(questions, opts, onDone){
         for (let i=0;i<10;i++) R(96+i*13, 90, 9, 7, i<lit ? '#f2b632' : 'rgba(244,232,208,0.14)');
         T(opts.lanterns ? 'Every right answer sent a lantern up.'
                         : 'Lóng nods — the story is safe with you.', 160, 104, 5.6, '#cfc0a8','center');
-        T('✓ or click to continue', 160, 118, 5.4, '#9a8c78','center');
+        T('CLICK to continue', 160, 118, 5.4, '#9a8c78','center');
         cx.restore();
         return;
       }
@@ -4948,7 +4973,7 @@ function makeQuizGame(questions, opts, onDone){
         R(220, 140, 62, 1, '#f2b632');
         T('STREAK ×'+st.streak, 251, 144, 5.6, '#ffe9b0','center');
       }
-      T('click an answer  ·  or ▲▼ and ✓', 160, 172, 5.2, '#9a8c78','center');
+      T('CLICK an answer  ·  or ▲▼ and Z', 160, 172, 5.2, '#9a8c78','center');
       T((st.idx+1)+' / '+questions.length, 300, 172, 5.2, '#9a8c78','center');
 
       if (st.hintT > 0 && st.state === 'ask'){
@@ -4966,12 +4991,12 @@ function makeQuizGame(questions, opts, onDone){
           let y2 = 90-h/2+26;
           T('CORRECT', 160, y2, 8, '#7ce87c','center'); y2 += 14;
           for (const ln of yl){ T(ln, 160, y2, 5.8, '#c8f4c0','center'); y2 += 8; }
-          T('✓ or click to go on', 160, y2+4, 5, '#9a8c78','center');
+          T('CLICK to go on', 160, y2+4, 5, '#9a8c78','center');
         } else {
           box(48, 92, 224, 42, {border:'#ff8a70'});
           T('NOT THAT ONE', 160, 98, 8, '#ff8a70','center');
           T('think again — that answer is out now', 160, 112, 5.8, '#ffd0c0','center');
-          T('✓ or click to retry', 160, 122, 5.2, '#cfc0a8','center');
+          T('CLICK to retry', 160, 122, 5.2, '#cfc0a8','center');
         }
       }
 
@@ -5077,7 +5102,7 @@ function makeDoorGame(onDone){
         // paper sways a little in your hands
         const swx = Math.sin(st.wob*2.3)*1.6, swy = Math.cos(st.wob*1.9)*1.2;
         p.sx = p.x + swx; p.sy = p.y + swy;
-        if (just.a){
+        if (just.a || just.click){
           const off = dist(p.sx, p.sy, p.tx, p.ty);
           if (off < 9){
             pasteSfx(); SFX.good();
@@ -5097,13 +5122,13 @@ function makeDoorGame(onDone){
       /* ---------- stage 3: which way up? ---------- */
       if (st.stage===3){
         if (st.done){
-          if (st.evT>2.6 || (just.a && st.evT>1.2)){ popScene(); onDone(); }
+          if (st.evT>2.6 || ((just.a || just.click) && st.evT>1.2)){ popScene(); onDone(); }
           return;
         }
         if (keys.left)  st.rot -= 150*dt;
         if (keys.right) st.rot += 150*dt;
         st.rot = (st.rot % 360 + 360) % 360;
-        if (just.a){
+        if (just.a || just.click){
           const upsideDown = Math.abs(st.rot - 180) < 32;
           if (upsideDown){
             st.done = true; st.evT = 0; st.rot = 180;
@@ -5181,7 +5206,7 @@ function makeDoorGame(onDone){
             cx.globalAlpha = 1;
             drawCouplet(p.sx, p.sy, p.w, p.h, p.vertical, p.chars);
             const off = dist(p.sx, p.sy, p.tx, p.ty);
-            T(off<9 ? '✓ PASTE IT!' : 'line it up…', 160, 160, 6.4, off<9 ? '#7ce87c' : '#cfc0a8', 'center');
+            T(off<9 ? 'CLICK — PASTE IT!' : 'line it up…', 160, 160, 6.4, off<9 ? '#7ce87c' : '#cfc0a8', 'center');
           }
         }
         if (st.stage===3){
@@ -5194,7 +5219,7 @@ function makeDoorGame(onDone){
           hanzi('福', 0, 0, 17, '#f2b632');
           cx.restore();
           if (!st.done){
-            T('◀ ▶ turn it   ·   ✓ paste', 160, 154, 6.4, '#ffe9b0', 'center');
+            T('◀ ▶ turn it   ·   CLICK to paste', 160, 154, 6.4, '#ffe9b0', 'center');
             T(Math.round(st.rot)+'°', 160, 164, 5.4, '#8a7c6a', 'center');
           }
         }
@@ -5213,7 +5238,7 @@ function makeDoorGame(onDone){
         T('FORTUNE HAS ARRIVED!', LW/2, 60, 8.4, '#f2b632','center');
         T('“Upside down” (dào) sounds just like “arrives” (dào) —', LW/2, 76, 5.4, '#f4e8d0','center');
         T('so an upside-down 福 shouts it to the whole street.', LW/2, 86, 5.4, '#f4e8d0','center');
-        T('✓', LW/2, 96, 6, '#cfc0a8','center');
+        T('CLICK', LW/2, 96, 5.6, '#cfc0a8','center');
       }
       if (st.msgT>0 && !(st.stage===3&&st.done)) T(st.msg, LW/2, 120, 6.6, st.msgC, 'center');
     }
@@ -5337,7 +5362,7 @@ function makeBriefing(cfg, makeScene){
       R(BTN.x, BTN.y, BTN.w, 2, '#ffe9b0');
       R(BTN.x, BTN.y+BTN.h-2, BTN.w, 2, 'rgba(0,0,0,0.3)');
       T('GOT IT!', LW/2, BTN.y+4, 7.4, '#2b1a26', 'center');
-      T('click, or ✓ / SPACE', LW/2, BTN.y+18, 4.4, '#8a7c6a', 'center');
+      T('CLICK it  ·  or Z / SPACE', LW/2, BTN.y+18, 4.4, '#8a7c6a', 'center');
       drawParts(0,0);
     }
   };
@@ -5347,8 +5372,11 @@ function makeBriefing(cfg, makeScene){
    HOW TO PLAY — the controls card shown at the very start,
    and any time from the title menu.
    ============================================================ */
-function makeHowToCard(onDone){
+function makeHowToCard(onDone, btnLabel){
   let t = 0;
+  const label = btnLabel || 'GOT IT!';
+  const bw = Math.min(250, Math.round(textW(label, 7)) + 28);
+  const btn = { x: 160 - bw/2, y: 149, w: bw, h: 16 };
   const ROWS = [
     ['#LRUD', 'walk around  (WASD works too)'],
     ['E',     'talk to people · use things'],
@@ -5365,8 +5393,8 @@ function makeHowToCard(onDone){
     exit(){ window.INHOWTO = false; },
     update(dt){
       t += dt; updateFade(dt); updateParts(dt);
-      const hit = clickIn(BTN.x, BTN.y, BTN.w, BTN.h);
-      if ((just.a || just.dash || just.interact || hit) && t > 0.35){
+      // mouse only — the game starts by proving the mouse works
+      if (clickIn(btn.x, btn.y, btn.w, btn.h) && t > 0.35){
         SFX.select(); window.INHOWTO = false; onDone();
       }
     },
@@ -5398,15 +5426,15 @@ function makeHowToCard(onDone){
       T('  screen picks up right where you left.', 22, 131, 5.0, '#cfc0a8');
       T('· Collect all 16 Wisdom Scrolls — press J to read them.', 22, 139, 5.0, '#cfc0a8');
 
-      /* GOT IT */
-      const hov = hoverIn(BTN.x, BTN.y, BTN.w, BTN.h);
+      /* the ready button — mouse only */
+      const hov = hoverIn(btn.x, btn.y, btn.w, btn.h);
       const pulse = hov || Math.sin(t*4) > 0;
-      R(BTN.x-2, BTN.y-2, BTN.w+4, BTN.h+4, '#2b1a26');
-      R(BTN.x, BTN.y, BTN.w, BTN.h, pulse ? accent : '#a8792a');
-      R(BTN.x, BTN.y, BTN.w, 2, '#ffe9b0');
-      R(BTN.x, BTN.y+BTN.h-2, BTN.w, 2, 'rgba(0,0,0,0.3)');
-      T('GOT IT!', LW/2, BTN.y+4, 7.4, '#2b1a26', 'center');
-      T('click, or E / ✓ / SPACE', LW/2, BTN.y+18, 4.4, '#8a7c6a', 'center');
+      R(btn.x-2, btn.y-2, btn.w+4, btn.h+4, '#2b1a26');
+      R(btn.x, btn.y, btn.w, btn.h, pulse ? accent : '#a8792a');
+      R(btn.x, btn.y, btn.w, 2, '#ffe9b0');
+      R(btn.x, btn.y+btn.h-2, btn.w, 2, 'rgba(0,0,0,0.3)');
+      T(label, LW/2, btn.y+5, 7, '#2b1a26', 'center');
+      T('click it with your mouse!', LW/2, btn.y+18, 4.4, '#8a7c6a', 'center');
       drawParts(0,0);
       drawFade();
     }
@@ -5537,10 +5565,11 @@ const BRIEF = {
   },
   poison: {
     title:'THE FIVE POISONS', sub:'fifth day of the fifth month', color:'#7ad24a',
-    what:['Deep summer wakes the “five poisons”: snake,',
-          'scorpion, centipede, toad and spider. This is',
-          'exactly why families hang mugwort over the',
-          'door and tie sachets on their children.'],
+    what:['The fifth month begins real summer heat, and',
+          'venomous creatures get active: snake, scorpion,',
+          'centipede, toad, spider — the “five poisons.”',
+          'For centuries families have hung mugwort at',
+          'the door against them. Here, you SWING it.'],
     steps:['Swing the mugwort bundle toward the cursor',
            'Clear all 3 waves of crawling poisons',
            'The Wǔ Dú King rises — keep swinging',
@@ -5656,7 +5685,7 @@ const titleScene = {
       }
       Tsh(o, LW/2, y, 7, i===this.sel?'#ffe9b0':'#b8a88e', 'center');
     });
-    T('click a button, or ARROWS + ✓ (Z/ENTER)', LW/2, 152, 5, '#cfc0a8', 'center');
+    T('click a button  ·  or ARROWS + Z', LW/2, 152, 5, '#cfc0a8', 'center');
     T('E interact · SPACE dash · CLICK to attack · J journal · M mute', LW/2, 170, 4.6, '#8a7c6a', 'center');
     drawFade();
   }
@@ -5882,7 +5911,7 @@ function makeChapterCard(ch, onDone){
       Tsh(c.big, LW/2, 78, 11, '#f2b632','center');
       T(c.small, LW/2, 96, 6, '#cfc0a8','center');
       R(LW/2-40, 108, 80, 1, '#a03428');
-      if (t>1) T('✓', LW/2, 150, 6, Math.sin(G.time*5)>0?'#f2b632':'#8a7c6a','center');
+      if (t>1) T('CLICK', LW/2, 150, 5.6, Math.sin(G.time*5)>0?'#f2b632':'#8a7c6a','center');
       drawFade();
     }
   };
@@ -6017,7 +6046,7 @@ function makeJournal(){
         R(40, 44, 240, 1, '#a03428');
         const lines = wrap(s.text, 236, 6);
         let yy=52; for (const ln of lines){ T(ln, 42, yy, 6, '#3a2418'); yy+=9; }
-        T('✓ back', 276, 150, 5, '#8a6a48','right');
+        T('click to go back', 276, 150, 5, '#8a6a48','right');
         return;
       }
       if (mode==='sources'){
@@ -6030,7 +6059,7 @@ function makeJournal(){
           T('   '+s[1]+' — '+s[2], 30, yy, 5, '#b8a88e'); yy+=11;
         });
         T('Full citations: see the Works Cited page', LW/2, 148, 5.2, '#cfc0a8','center');
-        T('✓ back', 288, 158, 5, '#8a6a48','right');
+        T('click to go back', 288, 158, 5, '#8a6a48','right');
         return;
       }
       box(16, 10, 288, 160, {border:'#c8a860'});
@@ -6046,7 +6075,7 @@ function makeJournal(){
         if (i===sel){ R(x-3, y-1.5, colW-8, 12, 'rgba(242,182,50,0.2)'); T('▶', x-1, y, 5.4, '#f2b632'); }
         T(label, x+8, y, 5.4, isSrc ? '#ffd964' : entries[i].got ? '#f4e8d0' : '#6a5c50');
       }
-      T('click a scroll, or ▲▼ and ✓  ·  ✕ close', LW/2, 162, 5, '#8a7c6a','center');
+      T('CLICK a scroll  ·  ✕ or X to close', LW/2, 162, 5, '#8a7c6a','center');
     }
   };
 }
@@ -6058,7 +6087,7 @@ const creditsScene = {
   update(dt){
     this.t+=dt; updateFade(dt); updateParts(dt);
     if (Math.random()<dt*2) spawnPart({x:rnd(LW), y:186, vx:0, vy:rnd(-16,-8), g:0, life:rnd(3,6), t:0, c:pick(['#ffb050','#ff7040','#ffe98a']), sz:1.8});
-    if (just.a && this.t>2){ pushScene(makeJournal()); }
+    if ((just.a || just.click) && this.t>2){ pushScene(makeJournal()); }
     if (just.b && this.t>2){ swapScene(titleScene); }
   },
   render(){
@@ -6072,7 +6101,7 @@ const creditsScene = {
     T('A 7th Grade Family Heritage Project', LW/2, 111, 5.4, '#cfc0a8','center');
     T('about the festivals of Chinese culture', LW/2, 120, 5.4, '#cfc0a8','center');
     T('Story facts: see Research Sources in the Journal', LW/2, 134, 5, '#9a8c78','center');
-    T('✓ open journal · ✕ title screen', LW/2, 156, 5.4, '#8a7c6a','center');
+    T('CLICK — open the journal  ·  X — title screen', LW/2, 156, 5.4, '#8a7c6a','center');
     drawFade();
   }
 };
@@ -6116,7 +6145,7 @@ const creatorScene = {
     fadeOut(()=>{
       swapScene(makeHowToCard(()=>{
         fadeOut(()=>{ swapScene(homeScene); homeScene.mode='intro'; fadeIn(); }, 3.2);
-      }));
+      }, "I'M READY TO START MY ADVENTURE!"));
       fadeIn();
     });
   },
@@ -6467,7 +6496,8 @@ const talks = {
       ], ()=> startGame('door', ()=> makeDoorGame(()=>{
         say([
           {who:'Uncle Bo', port:B, text:"HA! Look at that door. Best on the whole street, and the fu hanging on its head like a happy bat."},
-          {who:'Uncle Bo', port:B, text:"Word-play, kid. Five thousand years of dad jokes, and every single one of them still working."},
+          {who:'Uncle Bo', port:B, text:"Here's WHY, kid: 'upside down' is dào — and 'arrives' is ALSO dào. Same sound! So a fu on its head literally says GOOD FORTUNE HAS ARRIVED."},
+          {who:'Uncle Bo', port:B, text:"Word-play. Five thousand years of dad jokes, and every single one of them still working. Now the whole village will copy me."},
         ], ()=>{ giveScroll('fu'); setStep(4); });
       })));
     }
@@ -6621,8 +6651,8 @@ function getInteractables(){
       say([
         {who:'', text:'(You kneel by the reeds and close your hand around a bundle of mugwort. The riverbank goes very, very quiet.)'},
         {who:'Lóng', port:LONG_PORTRAIT, text:"…Little keeper. Do not move."},
-        {who:'Lóng', port:LONG_PORTRAIT, text:"Fifth day, fifth month. The hottest, sickest hour of the year — when the FIVE POISONS come out of the mud."},
-        {who:'Lóng', port:LONG_PORTRAIT, text:"Snake. Scorpion. Centipede. Toad. Spider. This is exactly why your family hangs mugwort over the door!"},
+        {who:'Lóng', port:LONG_PORTRAIT, text:"Fifth day, fifth month — the real start of summer. In the heat, the venomous creatures wake up and get BUSY: snake, scorpion, centipede, toad, spider."},
+        {who:'Lóng', port:LONG_PORTRAIT, text:"People long ago named them the FIVE POISONS — wǔ dú — and hung sharp-smelling mugwort at the door to keep them away. …And in MY village, old fears grow legs. Look out!"},
         {who:'Lóng', port:LONG_PORTRAIT, text:"So SWING it. ✓ swings, ✕ bursts the sachet when it is full, SPACE dashes. GO!"},
       ], ()=>{
         fadeOut(()=>{ startGame('poison', ()=> makePoisonBattle(()=>{
@@ -6992,7 +7022,7 @@ function makeNianBattle(){
         box(36,60,248,56);
         T('THE VILLAGE HIDES…', LW/2, 66, 8.4, '#ff8a70','center');
         T('Nian prowls until you stand again.', LW/2, 82, 5.8, '#f4e8d0','center');
-        T('✓ or CLICK — stand again', LW/2, 96, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+        T('CLICK to stand again  (or Z)', LW/2, 96, 7, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
       }
       if (st.msgT>0 && st.mode==='fight') T(st.msg, LW/2, 126, 7, st.msgC, 'center');
     }
@@ -7179,7 +7209,7 @@ function makePoisonBattle(onDone){
   window.POISON = st;
   function say2(m,c){ st.msg=m; st.msgT=1.3; st.msgC=c||'#ffe9b0'; }
   function hurtPlayer(){
-    if (st.inv>0 || st.mode!=='fight') return;
+    if (st.inv>0 || (st.mode!=='fight' && st.mode!=='king')) return;
     st.hearts--; st.inv=2.1; st.shake=0.5;
     SFX.bad(); noiseHit(0.3,0.4,true);
     burst(st.px, st.py-8, ['#8a3a72','#ffffff'], 16, 55);
@@ -7207,7 +7237,7 @@ function makePoisonBattle(onDone){
   ];
   function startKing(){
     if (st.hearts < 3){ st.hearts = 3; say2('Granny refills your sachet — 3 sprigs for the King!', '#7ce87c'); }
-    st.king = { x:160, y:120, vx:0, vy:0, hp:42, maxHp:42, hurtT:0, atk:null, atkCd:1.6, ang:0 };
+    st.king = { x:160, y:120, vx:0, vy:0, hp:36, maxHp:36, hurtT:0, atk:null, atkCd:1.9, ang:0 };
     st.mode='king'; hissSfx(); SFX.gong(); st.shake=0.9;
     say2('WǓ DÚ — THE FIVE-POISON KING!', '#ff3820');
   }
@@ -7286,7 +7316,7 @@ function makePoisonBattle(onDone){
           }
         }
         if (st.king && dist(st.king.x, st.king.y-20, hx, hy) < 38){
-          st.king.hp--; st.king.hurtT=0.25;
+          st.king.hp -= 2; st.king.hurtT=0.25;
           burst(st.king.x, st.king.y-20, ['#6ab04c','#a8e08a'],10,45);
           if (st.king.hp<=0){ st.mode='win'; st.evT=0; st.fledT=-1; st.venom=[]; st.rings=[]; playMusic(2); SFX.win(); }
         }
@@ -7303,7 +7333,7 @@ function makePoisonBattle(onDone){
           f.vx += Math.cos(a)*180; f.vy += Math.sin(a)*180;
         }
         if (st.king && dist(st.king.x, st.king.y-20, st.px, st.py-8) < 60){
-          st.king.hp -= 2; st.king.hurtT=0.3;
+          st.king.hp -= 3; st.king.hurtT=0.3;
           if (st.king.hp<=0){ st.mode='win'; st.evT=0; st.fledT=-1; st.venom=[]; st.rings=[]; playMusic(2); SFX.win(); }
         }
         st.webs = st.webs.filter(w=> dist(w.x,w.y,st.px,st.py-8) > 52);
@@ -7428,17 +7458,17 @@ function makePoisonBattle(onDone){
                 for (let i=0;i<n;i++)
                   st.venom.push({ x:k.x, y:k.y-20, vx:Math.cos(toP+(i-(n-1)/2)*0.24)*74,
                                   vy:Math.sin(toP+(i-(n-1)/2)*0.24)*74, t:0 });
-                hissSfx(); k.atk=null; k.atkCd = rage?1.2:1.7;
+                hissSfx(); k.atk=null; k.atkCd = rage?1.5:2.0;
               } else if (A.kind==='ring'){
                 st.rings.push({x:k.x, y:k.y-14, r:8});
                 const n = rage?12:9, off=rnd(6.28);
                 for (let i=0;i<n;i++)
                   st.venom.push({ x:k.x, y:k.y-20, vx:Math.cos(off+i/n*6.283)*46, vy:Math.sin(off+i/n*6.283)*46, t:0 });
-                mdrum(0,0.6); st.shake=0.5; k.atk=null; k.atkCd = rage?1.4:1.9;
+                mdrum(0,0.6); st.shake=0.5; k.atk=null; k.atkCd = rage?1.7:2.2;
               } else if (A.kind==='summon'){
                 spawn(pick(['snake','spider','scorpion']), k.x+rnd(-26,26), k.y+rnd(-20,20));
                 if (rage) spawn(pick(['spider','snake']), k.x+rnd(-26,26), k.y+rnd(-20,20));
-                hissSfx(); k.atk=null; k.atkCd = 1.9;
+                hissSfx(); k.atk=null; k.atkCd = 2.2;
               }
             }
           } else if (A.kind==='charge'){
@@ -7448,7 +7478,7 @@ function makePoisonBattle(onDone){
               if (A.t>0.55 || k.x<=PR.x0+26 || k.x>=PR.x1-26 || k.y<=PR.y0+34 || k.y>=PR.y1-6){
                 A.ph='recover'; A.t=0; k.vx*=0.2; k.vy*=0.2; st.shake=0.4; mdrum(0,0.5);
               }
-            } else if (A.t>0.85){ k.atk=null; k.atkCd = rage?1.2:1.6; }
+            } else if (A.t>0.85){ k.atk=null; k.atkCd = rage?1.5:1.9; }
           }
         }
         k.x += k.vx*dt; k.y += k.vy*dt;
@@ -7605,12 +7635,12 @@ function makePoisonBattle(onDone){
         box(34, 62, 252, 50);
         T('THE POISONS FLEE!', LW/2, 68, 8.4, '#7ce87c','center');
         T('Hang the mugwort — summer can do its worst.', LW/2, 84, 5.6, '#f4e8d0','center');
-        T('✓', LW/2, 96, 6, '#cfc0a8','center');
+        T('CLICK', LW/2, 96, 5.6, '#cfc0a8','center');
       } else if (st.mode==='lose'){
         box(36, 58, 248, 62);
         T('THE POISON TAKES HOLD…', LW/2, 66, 8, '#ff8a70','center');
         T('Granny Zhu presses fresh mugwort into your hand.', LW/2, 82, 5.4, '#f4e8d0','center');
-        T('✓ or CLICK — try again', LW/2, 94, 6.6, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
+        T('CLICK to try again  (or Z)', LW/2, 94, 6.6, Math.sin(st.t*5)>0?'#ffe9b0':'#8a7c6a','center');
         T('✕ retreat to the village', LW/2, 105, 5.4, '#cfc0a8','center');
       }
       if (st.msgT>0 && (st.mode==='fight'||st.mode==='king')) T(st.msg, LW/2, 122, 6.6, st.msgC, 'center');
