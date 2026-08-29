@@ -1579,10 +1579,17 @@ function capO(x1, x2, y, r, c){
   circle(x1, y, r, c); circle(x2, y, r, c);
   R(Math.min(x1,x2), y-r, Math.abs(x2-x1), r*2+1, c);
 }
-function drawNian(x, y, t){
+function drawNian(x, y, t, pose){
+  const po = pose || {};
+  const face  = po.face  === undefined ? 1 : po.face;   // 1 faces right, -1 left
+  const mouth = po.mouth || 0;                          // 0..1 jaw open
+  const rear  = po.rear  || 0;                          // 0..1 rearing back
+  const lunge = po.lunge || 0;                          // 0..1 stretched mid-charge
   const stomp = Math.round(Math.abs(Math.sin(t*3.2))*1.6);
-  const by = y - stomp;
-  ell(x+2, y-1, 29, 2.6, 'rgba(0,0,0,0.32)');
+  const by = y - stomp + Math.round(rear*-1);
+  ell(x+2*face, y-1, 29, 2.6, 'rgba(0,0,0,0.32)');
+  cx.save();
+  if (face < 0){ cx.translate(2*x*P, 0); cx.scale(-1, 1); }
   // tail (union pass: outlines, then fills)
   circle(x-26, by-14, 4.5, INK); circle(x-29, by-19, 3.9, INK);
   circle(x-26, by-14, 3.6, '#2a6620'); circle(x-29, by-19, 3, '#48962c');
@@ -1627,7 +1634,7 @@ function drawNian(x, y, t){
   tri(x+4, by-23, x+8, by-30, x+12, by-23, '#2a6620');
 
   /* ----- BIG head ----- */
-  const cxx = x+14, cyy = by-31;
+  const cxx = x+14 + Math.round(lunge*5 - rear*3), cyy = by-31 - Math.round(rear*4 - lunge*1);
   // horns: curved, gold, two-tone
   for (const s of [-1, 1]){
     const hxx = cxx + s*8;
@@ -1664,15 +1671,27 @@ function drawNian(x, y, t){
   R(cxx-6, cyy+2.4, 12, 1, '#7cc93e');
   R(cxx-4.6, cyy+3.8, 3, 1, '#2a6620'); R(cxx+1.6, cyy+3.8, 3, 1, '#2a6620');
   R(cxx-2.4, cyy+5.2, 1.6, 1.6, INK); R(cxx+0.8, cyy+5.2, 1.6, 1.6, INK);
-  // wide lower jaw with big up-fangs
-  R(cxx-9.4, cyy+7, 18.8, 4.6, INK);
-  R(cxx-8.8, cyy+7.6, 17.6, 3.4, '#2a6620');
-  R(cxx-8.8, cyy+7.6, 17.6, 1, '#48962c');
-  for (const [fx, fh] of [[cxx-8, 5.4], [cxx-3.4, 3.6], [cxx+2, 3.6], [cxx+6.4, 5.4]]){
-    tri(fx-1.6, cyy+7.8, fx, cyy+7.8-fh, fx+1.6, cyy+7.8, INK);
-    tri(fx-1, cyy+7.8, fx, cyy+7.8-fh+1, fx+1, cyy+7.8, '#ede0bc');
+  // open mouth: the gullet glows between muzzle and jaw
+  const jdrop = mouth*4.6;
+  if (mouth > 0.05){
+    R(cxx-7, cyy+6.6, 14, jdrop+1.6, '#2b0a08');
+    R(cxx-5.6, cyy+7, 11.2, jdrop+0.8, '#a81c10');
+    if (mouth > 0.35){
+      R(cxx-4, cyy+7.4, 8, jdrop*0.7, '#ff5024');
+      glow(cxx, cyy+8+jdrop*0.5, 8+mouth*6, '#ff7030', 0.30*mouth);
+    }
   }
-  R(cxx-7, cyy+10.2, 14, 0.9, '#143c16');
+  // wide lower jaw with big up-fangs
+  const jy = cyy + jdrop;
+  R(cxx-9.4, jy+7, 18.8, 4.6, INK);
+  R(cxx-8.8, jy+7.6, 17.6, 3.4, '#2a6620');
+  R(cxx-8.8, jy+7.6, 17.6, 1, '#48962c');
+  for (const [fx, fh] of [[cxx-8, 5.4], [cxx-3.4, 3.6], [cxx+2, 3.6], [cxx+6.4, 5.4]]){
+    tri(fx-1.6, jy+7.8, fx, jy+7.8-fh, fx+1.6, jy+7.8, INK);
+    tri(fx-1, jy+7.8, fx, jy+7.8-fh+1, fx+1, jy+7.8, '#ede0bc');
+  }
+  R(cxx-7, jy+10.2, 14, 0.9, '#143c16');
+  cx.restore();
 }
 
 /* ---------- Nian cub: the little ones Nian calls up ---------- */
@@ -2346,7 +2365,7 @@ const LONG_PORTRAIT = { dragon:true };
 const OBJECTIVES = {
   1: [ 'Follow the glowing dragon…',
        'Talk to Elder Shan at the TEA HOUSE',
-       'Help Auntie Hua sweep (hold ✓)',
+       'Help Auntie Hua sweep out the dust',
        'Help Uncle Bo hang the couplets',
        'Make dumplings with Mei’s family',
        'NIGHT FALLS… stand with the village!',
@@ -2363,8 +2382,8 @@ const OBJECTIVES = {
        'Hear the story of Chang’e',
        'Bake mooncakes with Baker Fang',
        'Light the 5 lanterns around the village',
-       'Join the reunion feast in the plaza',
-       'Solve the lantern riddles!',
+       'Talk to Elder Shan at the feast',
+       'Talk to Lóng — solve his lantern riddles',
        'Talk to Lóng the dragon' ],
 };
 
@@ -2532,6 +2551,94 @@ function giveScroll(id){
   SFX.scroll();
   saveGame();
 }
+/* ---------- where the current task lives, in world coords ---------- */
+function questTarget(){
+  const c = G.ch, st = G.step;
+  const npc = id => { const p = npcPos(id); return p ? { x:p[0], y:p[1] } : null; };
+  const PEDESTAL = { x:480, y:200 };
+  const LONGSPOT = () => ({ x: world.lx, y: world.ly });
+  if (c===1){
+    if (st===0) return { x: world.lx, y: world.ly };          // follow Lóng
+    if (st===1 || st===6) return npc('elder');
+    if (st===2) return npc('hua');
+    if (st===3) return npc('bo');
+    if (st===4) return npc('mei');
+    if (st===7) return LONGSPOT();
+    return null;                                              // nightfall handles itself
+  }
+  if (c===2){
+    if (st===0 || st===5) return npc('yu');
+    if (st===1) return npc('wen');
+    if (st===2 || st===4) return npc('zhu');
+    if (st===3) return { x: clamp(world.px, 80, 920), y: 262 };  // the river's edge
+    if (st===6) return LONGSPOT();
+  }
+  if (c===3){
+    if (st===0 || st===1) return npc('mei');
+    if (st===2) return npc('fang');
+    if (st===3){                                              // nearest unlit lantern pole
+      let best = null, bd = 1e9;
+      POLES.forEach((p,i)=>{ if (!G.flags['pole'+i]){
+        const d = Math.hypot(p[0]-world.px, p[1]-world.py);
+        if (d < bd){ bd = d; best = { x:p[0], y:p[1] }; } } });
+      return best;
+    }
+    if (st===4) return { x:468, y:184 };                      // the feast
+    if (st===5 || st===6) return LONGSPOT();
+  }
+  return null;
+}
+
+/* the guiding arrow: hovers over the goal, or points at it from the screen edge */
+function questArrowRender(){
+  if (DLG.active) return;
+  const t = questTarget(); if (!t) return;
+  if (Math.hypot(t.x - world.px, t.y - world.py) < 36) return;   // you have arrived
+  const sx = t.x - world.cam, sy = t.y - world.camY;
+  const bob = Math.sin(G.time*5)*2;
+  if (sx > 16 && sx < LW-16 && sy > 34 && sy < LH-6){
+    const ay = sy - 30 + bob;                                    // bouncing marker above the goal
+    glow(sx, ay+5, 9, '#f2b632', 0.22);
+    tri(sx, ay+10, sx-6.5, ay, sx+6.5, ay, '#2b1a26');
+    tri(sx, ay+8, sx-4.5, ay+1, sx+4.5, ay+1, '#f2b632');
+    tri(sx, ay+5.5, sx-2.5, ay+1.6, sx+2.5, ay+1.6, '#ffe98a');
+  } else {
+    const pxs = world.px - world.cam, pys = world.py - 8 - world.camY;
+    const a = Math.atan2(t.y - world.py, t.x - world.px);
+    const pulse = Math.sin(G.time*5)*2;
+    const ex = clamp(pxs + Math.cos(a)*150, 16, LW-16);
+    const ey = clamp(pys + Math.sin(a)*150, 34, LH-14);
+    const ca = Math.cos(a), sa = Math.sin(a), pa = -sa, pb = ca;
+    const tx = ex + ca*(9+pulse), ty = ey + sa*(9+pulse);        // apex, breathing outward
+    const bx = ex - ca*3, by = ey - sa*3;
+    glow(ex, ey, 9, '#f2b632', 0.2);
+    tri(tx + ca*1.6, ty + sa*1.6, bx + pa*7 - ca*1.2, by + pb*7 - sa*1.2, bx - pa*7 - ca*1.2, by - pb*7 - sa*1.2, '#2b1a26');
+    tri(tx, ty, bx + pa*5, by + pb*5, bx - pa*5, by - pb*5, '#f2b632');
+    tri(tx - ca*2, ty - sa*2, bx + pa*2.4 + ca*1.4, by + pb*2.4 + sa*1.4, bx - pa*2.4 + ca*1.4, by - pb*2.4 + sa*1.4, '#ffe98a');
+  }
+}
+
+/* ---------- NEW QUEST pop: announces the objective mid-screen ---------- */
+const QPOP = { text:'', t:0, on:false, pend:null };
+function questPopRender(){
+  if (!QPOP.on) return;
+  const t = QPOP.t;
+  const ain  = Math.min(1, t/0.28);
+  const aout = t > 2.7 ? Math.max(0, 1 - (t-2.7)/0.55) : 1;
+  const a = ain*aout;
+  if (a <= 0) return;
+  const y = 56 - (1-ain)*12;
+  cx.globalAlpha = a;
+  R(0, y, LW, 38, 'rgba(12,8,16,0.88)');
+  R(0, y, LW, 1, '#f2b632'); R(0, y+37, LW, 1, '#f2b632');
+  R(0, y+1, LW, 1, 'rgba(242,182,50,0.35)'); R(0, y+36, LW, 1, 'rgba(242,182,50,0.35)');
+  T('✦  NEW QUEST  ✦', LW/2, y+5, 5.4, '#f2b632', 'center');
+  T(QPOP.text, LW/2, y+16, 7.4, '#ffe9b0', 'center');
+  const sw = Math.min(200, 200*Math.min(1, t/0.6));
+  R(LW/2 - sw/2, y+30, sw, 1, 'rgba(242,182,50,0.6)');
+  cx.globalAlpha = 1;
+}
+
 function toastRender(dt){
   if (!toast) return;
   toast.t += dt;
@@ -2672,6 +2779,18 @@ const world = {
     updateFade(dt);
     updateParts(dt);
     if (toast) {} // toast timing handled in render
+    // a new objective pops mid-screen (queued until any dialogue closes)
+    const qkey = G.ch + ':' + G.step;
+    if (this._qkey !== qkey){
+      this._qkey = qkey;
+      const obj = (OBJECTIVES[G.ch]||[])[G.step];
+      if (obj) QPOP.pend = obj;
+    }
+    if (QPOP.pend && !DLG.active){
+      QPOP.text = QPOP.pend; QPOP.pend = null;
+      QPOP.on = true; QPOP.t = 0; SFX.sparkle();
+    }
+    if (QPOP.on){ QPOP.t += dt; if (QPOP.t > 3.4) QPOP.on = false; }
     if (DLG.active){ dlgUpdate(dt); this.followLong(dt); return; }
     if (just.journal){ pushScene(makeJournal()); return; }
     // movement
@@ -2724,7 +2843,8 @@ const world = {
   followLong(dt){
     let tx2, ty2;
     if (typeof longWaiting==='function' && longWaiting()){
-      tx2 = 480; ty2 = 186;   // waits by the treasure pedestal
+      if (G.ch===3){ tx2 = 580; ty2 = 256; }   // clear of the feast crowd, easy to reach
+      else { tx2 = 480; ty2 = 186; }           // by the treasure pedestal
     } else {
       const behind = this.dir==='left'? 24 : this.dir==='right'? -24 : (this.px>this.lx?-24:24);
       tx2 = this.px + behind; ty2 = this.py - 18;
@@ -2791,7 +2911,9 @@ const world = {
       cx.globalCompositeOperation = 'source-over';
     }
     if (ch===3) drawMoon(295, 44, 13, G.flags.moonlit?0:0.55);
+    questArrowRender();
     this.renderHUD();
+    questPopRender();
     dlgRender();
     toastRender(1/60);
     drawFade();
@@ -2804,6 +2926,34 @@ const world = {
       box(6, 5, w, 13, {bg:'rgba(20,12,16,0.82)'});
       T('✦', 11, 8, 5.4, '#f2b632');
       T(obj, 20, 8, 5.4, '#f4e8d0');
+    }
+    // compass, bottom-left: the needle points at the current task
+    {
+      const ct = questTarget();
+      const ccx = 18, ccy = LH-18, cr = 11;
+      circle(ccx, ccy, cr+1.6, '#2b1a26');
+      circle(ccx, ccy, cr, '#c8a860');
+      circle(ccx, ccy, cr-1.2, '#181226');
+      for (let k=0;k<4;k++){                        // cardinal ticks
+        const ka = k*Math.PI/2;
+        R(ccx + Math.cos(ka)*(cr-2.6) - 0.7, ccy + Math.sin(ka)*(cr-2.6) - 0.7, 1.4, 1.4, '#6a5a48');
+      }
+      if (ct){
+        const near = Math.hypot(ct.x - this.px, ct.y - this.py) < 36;
+        if (near){
+          circle(ccx, ccy, 3, Math.sin(G.time*6)>0 ? '#7ce87c' : '#4a8a4a');   // you have arrived
+        } else {
+          const a = Math.atan2(ct.y - this.py, ct.x - this.px);
+          const ca = Math.cos(a), sa = Math.sin(a), pa = -sa, pb = ca;
+          tri(ccx + ca*(cr-2.2), ccy + sa*(cr-2.2),
+              ccx - ca*2 + pa*2.6, ccy - sa*2 + pb*2.6,
+              ccx - ca*2 - pa*2.6, ccy - sa*2 - pb*2.6, '#e03c28');
+          tri(ccx - ca*(cr-4.6), ccy - sa*(cr-4.6),
+              ccx + pa*2, ccy + pb*2,
+              ccx - pa*2, ccy - pb*2, '#ede0bc');
+          circle(ccx, ccy, 1.6, '#f2b632');
+        }
+      } else circle(ccx, ccy, 1.6, '#6a5a48');
     }
     // scroll count
     const sc = G.scrolls.length + '/' + SCROLL_ORDER.length;
@@ -3664,6 +3814,7 @@ function makeDumplingGame(onDone){
         const ok = st.zones.every(z=> z<=0.28 && z>=-0.2);
         const anyTorn = st.zones.some(z=> z < -0.2);
         if (ok || anyTorn){
+          st.holdLock = true;
           const acc = anyTorn ? 0.45 : 1;
           st.stageScore.push(acc);
           st.stage = 1; st.evT = 0;
@@ -3673,6 +3824,7 @@ function makeDumplingGame(onDone){
       }
       /* ---- 2. FILL ---- */
       else if (st.stage===1){
+        if (st.holdLock){ if (!(keys.a || mouse.down) && st.evT > 0.4) st.holdLock = false; return; }
         const held = keys.a || mouse.down;
         if (held){ st.filling = true; st.fill += (0.42*speedUp())*dt; }
         else if (st.filling){
@@ -3868,11 +4020,16 @@ function makeZongziGame(onDone){
           say2(off<0.05 ? 'A perfect cone!' : off<0.12 ? 'Close enough.' : 'Loose — rice will leak!',
                off<0.05 ? '#7ce87c' : off<0.12 ? '#ffe9b0' : '#ff8a70');
           if (off<0.12) SFX.good(); else SFX.bad();
-          st.stage = 1; st.evT = 0;
+          st.stage = 1; st.evT = 0; st.holdLock = true;   // the fold click must not pour
         }
       }
       /* 2. POUR the rice */
       else if (st.stage===1){
+        // wait for a FRESH press (and a beat) so the fold's click can't spill rice
+        if (st.holdLock){
+          if (!(keys.a || mouse.down) && st.evT > 0.5) st.holdLock = false;
+          return;
+        }
         const held = keys.a || mouse.down;
         if (held){ st.pouring = true; st.rice += (0.4*speedUp())*dt;
           if (Math.random()<0.6) spawnPart({x:160+rnd(-5,5), y:74, vx:rnd(-6,6), vy:rnd(30,50), g:60, life:0.5, t:0, c:'#f6ecd8', sz:1.4}); }
@@ -4060,10 +4217,10 @@ function makeBoatRace(onDone){
     st.stuff = [];
     for (let d=150; d<RACE_LEN-60; d+=rnd(46, 78)){
       const r = Math.random();
-      const kind = r < 0.3 ? 'zongzi' : r < 0.62 ? 'rock' : r < 0.86 ? 'log' : 'whirl';
+      const kind = 'zongzi';                        // friendly waters: snacks only
       const lane = irnd(0,2);
       st.stuff.push({ d, lane, kind, gone:false });
-      if (kind !== 'zongzi' && Math.random() < 0.35){
+      if (false){
         let l2 = (lane + 1 + irnd(0,1)) % 3;
         st.stuff.push({ d: d + rnd(-6,6), lane: l2, kind: Math.random()<0.5?'rock':'log', gone:false });
       }
@@ -4093,15 +4250,15 @@ function makeBoatRace(onDone){
     st.lastSide = side; st.strokes++; st.strokeCd = 0.16;
     const near = Math.min(st.beatT, BEAT - st.beatT);
     if (near < BEAT*0.20){
-      st.spd += 20; st.combo++; st.perfect++;
+      st.spd += 25; st.combo++; st.perfect++;
       st.best = Math.max(st.best, st.combo);
       say2(st.combo>=6 ? 'ON FIRE! ×'+st.combo : 'PERFECT!', '#7ce87c');
       SFX.drum();
       st.stam = Math.min(100, st.stam + 3);
     } else if (near < BEAT*0.36){
-      st.spd += 11; st.combo = 0; say2('good', '#ffe9b0'); noiseHit(0.07,0.2,true);
+      st.spd += 15; st.combo = 0; say2('good', '#ffe9b0'); noiseHit(0.07,0.2,true);
     } else {
-      st.spd += 4; st.combo = 0; say2('off the beat…', '#ffd0a0'); noiseHit(0.05,0.14);
+      st.spd += 6; st.combo = 0; say2('off the beat…', '#ffd0a0'); noiseHit(0.05,0.14);
     }
     burst(74, st.laneY + (side==='left'?9:-9), ['#cfe4f4','#ffffff'], 5, 26);
   }
@@ -4143,7 +4300,8 @@ function makeBoatRace(onDone){
       st.surge = Math.max(0, st.surge - dt);
       if (just.dash && st.stam >= 30 && st.surge<=0){
         st.stam -= 30; st.surge = 1.1; st.spd += 34;
-        SFX.dash(); say2('SURGE!', '#cfe4f4');
+        SFX.dash(); say2('SURGE! WOOSH!', '#cfe4f4');
+        for (let k2=0;k2<10;k2++) spawnPart({x:70+rnd(-8,8), y:120+rnd(-10,10), vx:-rnd(40,90), vy:rnd(-16,16), g:0, life:rnd(0.3,0.6), t:0, c:pick(['#cfe4f4','#ffffff']), sz:rnd(1.4,2.4)});
       }
       st.stam = Math.min(100, st.stam + 5.5*dt);
 
@@ -4152,7 +4310,7 @@ function makeBoatRace(onDone){
       const boost = st.surge>0 ? 1.45 : 1;
       st.dist += st.spd * boost * dt;
       st.rivalWob += dt;
-      st.rival += (30 + Math.sin(st.rivalWob*0.6)*7) * dt;
+      st.rival += (23 + Math.sin(st.rivalWob*0.6)*5) * dt;
 
       /* obstacles & pickups */
       for (const o of st.stuff){
@@ -4246,10 +4404,19 @@ function makeBoatRace(onDone){
       drawDrum(20, 44, 0.85 + pu*0.3);
       glow(20, 38, 9+pu*7, '#f2b632', 0.22*pu);
       T('BEAT', 12, 48, 4.4, '#8a7c6a');
-      // stamina
+      // stamina — and exactly what it is FOR
+      const canSurge = st.stam >= 30 && st.surge <= 0;
       T('STAMINA', 40, 30, 4.6, '#8a7c6a');
       R(40, 36, 60, 6, 'rgba(20,12,16,0.85)');
-      R(40, 36, 60*(st.stam/100), 6, st.stam>=30 ? '#7ce87c' : '#8a7c6a');
+      R(40 + 60*0.3, 35, 1, 8, '#cfe4f4');                      // the surge cost line
+      R(40, 36, 60*(st.stam/100), 6, canSurge ? '#7ce87c' : '#8a7c6a');
+      if (st.surge > 0){
+        T('SURGING!', 40, 45, 5.2, '#cfe4f4');
+      } else if (canSurge){
+        T('SPACE = SURGE!', 40, 45, 5.2, Math.sin(st.t*6)>0 ? '#ffe98a' : '#c8a860');
+      } else {
+        T('zongzi refill it', 40, 45, 4.2, '#6a5a48');
+      }
       // combo
       if (st.combo>1) T('×'+st.combo+' COMBO', 108, 30, 5.4, '#ffe9b0');
       // progress bar: you vs rival
@@ -4408,6 +4575,7 @@ function makeMooncakeGame(onDone){
   function finishStage(score){
     st.stageScore.push(clamp(score,0,1));
     st.stage++;
+    st.holdLock = true; st.evT = 0;
     st.flash = 0.3;
     if (st.stage >= 3){
       const avg = st.stageScore.reduce((a,b)=>a+b,0) / st.stageScore.length;
@@ -4475,6 +4643,7 @@ function makeMooncakeGame(onDone){
       /* ---------- 2. FILL: pour lotus paste, then seat the yolk ---------- */
       if (st.stage===1){
         if (st.sub===0){
+          if (st.holdLock){ if (!(keys.a || mouse.down) && st.evT > 0.4) st.holdLock = false; return; }
           st.pouring = keys.a || mouse.down;
           if (st.pouring){
             st.paste += dt*0.42;
@@ -5081,8 +5250,18 @@ function makeDoorGame(onDone){
         if (!s) return;
         const held = keys[s.dir];
         const anyOther = ['up','down','left','right'].some(k=> k!==s.dir && keys[k]);
-        if (held){
-          st.prog += dt * 1.55;
+        // the mouse writes: hold and drag along the glowing stroke
+        let dragging = false;
+        if (mouse.down){
+          const along = s.dir==='right' ? (mouse.x - s.x)/s.w : (mouse.y - s.y)/s.h;
+          const lat   = s.dir==='right' ? Math.abs(mouse.y - (s.y+s.h/2)) : Math.abs(mouse.x - (s.x+s.w/2));
+          if (lat < 17 && along > st.prog - 0.12){
+            const target = clamp(along, 0, 1);
+            if (target > st.prog){ st.prog = Math.min(target, st.prog + dt*3.2); dragging = true; }
+          }
+        }
+        if (held || dragging){
+          if (held) st.prog += dt * 1.55;
           if (Math.random()<0.5) spawnPart({ x:st.brushX+rnd(-2,2), y:st.brushY+rnd(-2,2), vx:0, vy:rnd(4,12),
                                              g:0, life:0.4, t:0, c:'#2b1a26', sz:1.4 });
           if (st.prog>=1){
@@ -5102,6 +5281,11 @@ function makeDoorGame(onDone){
         const p = st.papers[st.pi];
         if (!p) return;
         const sp = 78;
+        if (mouse.over && mouse.down){                 // hold the mouse: carry the paper
+          p.x += (mouse.x - p.x)*Math.min(1, dt*12);
+          p.y += (mouse.y - p.y)*Math.min(1, dt*12);
+          p.wasHeld = true;
+        } else if (!mouse.down) { if (p.wasHeld) p.justReleased = true; }
         if (keys.left)  p.x -= sp*dt;
         if (keys.right) p.x += sp*dt;
         if (keys.up)    p.y -= sp*dt;
@@ -5110,7 +5294,7 @@ function makeDoorGame(onDone){
         // paper sways a little in your hands
         const swx = Math.sin(st.wob*2.3)*1.6, swy = Math.cos(st.wob*1.9)*1.2;
         p.sx = p.x + swx; p.sy = p.y + swy;
-        if (just.a || just.click){
+        if (just.a || just.click || (p.wasHeld && !mouse.down && dist(p.sx,p.sy,p.tx,p.ty) < 9)){
           const off = dist(p.sx, p.sy, p.tx, p.ty);
           if (off < 9){
             pasteSfx(); SFX.good();
@@ -5135,8 +5319,11 @@ function makeDoorGame(onDone){
         }
         if (keys.left)  st.rot -= 150*dt;
         if (keys.right) st.rot += 150*dt;
+        if (mouse.down && hoverIn(88, 82, 24, 28))  st.rot -= 150*dt;   // ⟲ button
+        if (mouse.down && hoverIn(208, 82, 24, 28)) st.rot += 150*dt;   // ⟳ button
         st.rot = (st.rot % 360 + 360) % 360;
-        if (just.a || just.click){
+        const wantPaste = just.a || clickIn(112, 130, 96, 15);
+        if (wantPaste){
           const upsideDown = Math.abs(st.rot - 180) < 32;
           if (upsideDown){
             st.done = true; st.evT = 0; st.rot = 180;
@@ -5186,6 +5373,16 @@ function makeDoorGame(onDone){
         cx.clip();
         hanzi('福', 160, 86, 46, '#241a20');
         cx.restore();
+        // the current stroke glows so you know where to drag
+        if (cur){
+          cx.globalAlpha = 0.22 + Math.sin(st.t*5)*0.08;
+          R(cur.x-2, cur.y-2, cur.w+4, cur.h+4, '#f2b632');
+          cx.globalAlpha = 1;
+          // start dot at the stroke's beginning
+          const sx0 = cur.x + (cur.dir==='right' ? 0 : cur.w/2);
+          const sy0 = cur.y + (cur.dir==='right' ? cur.h/2 : 0);
+          if (st.prog < 0.05) circle(sx0, sy0, 2.4, Math.sin(st.t*7)>0 ? '#7ce87c' : '#4a8a4a');
+        }
         // brush
         if (cur){
           st.brushX = cur.dir==='right' ? cur.x + cur.w*st.prog : cur.x + cur.w/2;
@@ -5195,11 +5392,12 @@ function makeDoorGame(onDone){
           circle(st.brushX, st.brushY, 2, '#2b1a26');
           // prompt
           const a = ARROW_OF[cur.dir];
-          T('HOLD  '+a, 160, 132, 8, keys[cur.dir] ? '#7ce87c' : (Math.sin(st.t*6)>0?'#ffe9b0':'#c8a860'), 'center');
+          T('HOLD the mouse & DRAG along the glow', 160, 132, 6.2, mouse.down ? '#7ce87c' : (Math.sin(st.t*6)>0?'#ffe9b0':'#c8a860'), 'center');
+          T('(or hold '+a+' on the keyboard)', 160, 142, 5, '#8a7c6a', 'center');
         }
         // ink progress pips
         for (let i=0;i<FU_STROKES.length;i++)
-          R(134+i*8, 142, 6, 3, i < st.si ? '#f2b632' : '#5a4a3a');
+          R(134+i*8, 152, 6, 3, i < st.si ? '#f2b632' : '#5a4a3a');
       }
 
       /* stages 2 & 3 — the door */
@@ -5219,6 +5417,7 @@ function makeDoorGame(onDone){
         }
         if (st.stage===3){
           const rad = st.rot*Math.PI/180;
+          if (!st.done && Math.abs(((st.rot % 360) + 360) % 360 - 180) < 32) glow(160, 96, 22, '#7ce87c', 0.25);
           cx.save();
           cx.translate(160*P, 96*P); cx.rotate(rad);
           R(-13, -13, 26, 26, '#2b1a26');
@@ -5227,8 +5426,26 @@ function makeDoorGame(onDone){
           hanzi('福', 0, 0, 17, '#f2b632');
           cx.restore();
           if (!st.done){
-            T('◀ ▶ turn it   ·   CLICK to paste', 160, 154, 6.4, '#ffe9b0', 'center');
-            T(Math.round(st.rot)+'°', 160, 164, 5.4, '#8a7c6a', 'center');
+            const off = Math.abs(((st.rot % 360) + 360) % 360 - 180);
+            const lined = off < 32;
+            // rotate buttons
+            for (const [bx2, gdir] of [[88,'L'],[208,'R']]){
+              const hov = hoverIn(bx2, 82, 24, 28);
+              box(bx2, 82, 24, 28, {border: hov ? '#f2b632' : '#6a5a48', bg: hov ? 'rgba(60,36,20,0.95)' : 'rgba(20,12,16,0.8)'});
+              arrowGlyph(bx2+8, 92, gdir, hov ? '#ffe9b0' : '#cfc0a8');
+              T('hold', bx2+12, 102, 4.2, '#8a7c6a', 'center');
+            }
+            // paste button — lights up when the fú is the lucky way up
+            const hp2 = hoverIn(112, 130, 96, 15);
+            box(112, 130, 96, 15, {border: lined ? '#7ce87c' : hp2 ? '#f2b632' : '#6a5a48',
+                                   bg: lined ? 'rgba(30,70,30,0.92)' : 'rgba(20,12,16,0.85)'});
+            T(lined ? 'PASTE IT!' : 'paste…', 160, 134, 6.6, lined ? '#7ce87c' : '#cfc0a8', 'center');
+            // the reason, right on screen
+            R(0, 148, LW, 32, 'rgba(12,8,16,0.78)');
+            R(0, 148, LW, 1, 'rgba(242,182,50,0.35)');
+            T('TIP: “upside down” is dào 倒 — and “ARRIVES” is dào 到.', 160, 152, 5.2, '#ffe9b0', 'center');
+            T('Same sound! Hang it so the fú SAYS fortune arrives…', 160, 161, 5.2, '#cfc0a8', 'center');
+            T('turn with the buttons or ◀ ▶  ·  Z also pastes', 160, 171, 4.6, '#8a7c6a', 'center');
           }
         }
       }
@@ -5237,7 +5454,7 @@ function makeDoorGame(onDone){
 
       /* HUD */
       const titles = {1:'INK & BRUSH', 2:'HANG THE COUPLETS', 3:'WHICH WAY UP?'};
-      const subs = {1:'write 福 — good fortune', 2:'paste them straight, Uncle Bo is watching', 3:'think about what dào means…'};
+      const subs = {1:'hold & DRAG the brush along the glowing stroke', 2:'drag each paper to its spot', 3:'hang it the LUCKY way — dào 倒 = dào 到'};
       mgHeader("UNCLE BO'S DOOR", subs[st.stage]);
       T(titles[st.stage], 10, 30, 6, '#f2b632');
       T('STAGE '+st.stage+' / 3', 312, 30, 5.4, '#8a7c6a', 'right');
@@ -5478,12 +5695,12 @@ const BRIEF = {
           'onto every door of the house, written in ink',
           'on red paper. The character fú means “good',
           'fortune” — and it goes on last.'],
-    steps:['WRITE fú: drag the brush down each stroke',
-           'HANG both couplets level on the doorposts',
-           'TURN the fú… which way up? think first',
-           'Upside down = “fortune has ARRIVED”'],
-    keys:[['HOLD','drag brush'],
-          ['#LRUD','place / turn'],
+    steps:['WRITE fú: hold the mouse, drag each stroke',
+           'HANG the couplets: drag each paper to its spot',
+           'TURN the fú with the buttons… which way up?',
+           'Upside down 倒 dào = 到 dào “fortune ARRIVES”'],
+    keys:[['DRAG','write · hang'],
+          ['#LR','turn the fú'],
           ['CLICK','paste it']],
     art(t){ R(40, 42, 52, 42, '#f7edd6'); hanzi('福', 66, 63, 28, 'rgba(120,100,90,0.25)');
             cx.save(); cx.beginPath(); cx.rect(40*P, 42*P, 52*P, (10+((t*14)%32))*P); cx.clip();
@@ -5528,8 +5745,8 @@ const BRIEF = {
           're-enactment of that dash to save him.'],
     steps:['ONE stroke per drum beat — never mash',
            'Alternate ◀ then ▶, left, right, left…',
-           'Steer ▲▼ around rocks, logs and whirlpools',
-           'Grab zongzi for stamina, SPACE to surge'],
+           'Steer ▲▼ to snatch floating zongzi',
+           'Zongzi refill stamina — SPACE to surge'],
     keys:[['#LR','paddle'],
           ['#UD','change lane'],
           ['SPACE','surge']],
@@ -6090,26 +6307,93 @@ function makeJournal(){
 
 /* ---------- credits ---------- */
 const creditsScene = {
-  t:0,
-  enter(){ this.t=0; playMusic(3); G.ch=4; saveGame(); },
+  t:0, fw:[], roll:0,
+  enter(){ this.t=0; this.roll=0; this.fw=[]; playMusic(3); G.ch=4; saveGame(); },
   update(dt){
     this.t+=dt; updateFade(dt); updateParts(dt);
+    this.roll += dt*9;
+    // fireworks
+    if (Math.random() < dt*1.2){
+      const fx2 = rnd(40,280), fy2 = rnd(24,70);
+      this.fw.push({x:fx2, y:fy2, t:0, c:pick(['#f2b632','#ff5838','#7ce87c','#cfe4f4','#e88ac0'])});
+      burst(fx2, fy2, ['#ffe98a', '#ffffff'], 6, 20);
+      if (Math.random()<0.5) SFX.sparkle();
+    }
+    for (const f of this.fw) f.t += dt;
+    this.fw = this.fw.filter(f=>f.t<1.2);
     if (Math.random()<dt*2) spawnPart({x:rnd(LW), y:186, vx:0, vy:rnd(-16,-8), g:0, life:rnd(3,6), t:0, c:pick(['#ffb050','#ff7040','#ffe98a']), sz:1.8});
     if ((just.a || just.click) && this.t>2){ pushScene(makeJournal()); }
     if (just.b && this.t>2){ swapScene(titleScene); }
   },
   render(){
-    R(0,0,LW,LH,'#141020');
-    for(let i=0;i<40;i++){ const h=thash(i,5); R(h*LW, thash(i,11)*90, 1.4, 1.4, '#e8e4f4'); }
-    drawMoon(160, 34, 18, 0);
+    R(0,0,LW,LH,'#101024');
+    for(let i=0;i<50;i++){ const h=thash(i,5); if (Math.sin(this.t*1.6+i)>-0.5) R(h*LW, thash(i,11)*100, 1.4, 1.4, '#e8e4f4'); }
+    drawMoon(276, 30, 15, 0);
+    // fireworks bloom as pixel rings
+    for (const f of this.fw){
+      const r = f.t*26, a = 1-f.t/1.2;
+      cx.globalAlpha = a;
+      for (let i=0;i<12;i++){
+        const an = i/12*6.283 + f.t*2;
+        R(f.x+Math.cos(an)*r-1, f.y+Math.sin(an)*r*0.8-1, 2, 2, f.c);
+        R(f.x+Math.cos(an)*r*0.6-0.7, f.y+Math.sin(an)*r*0.48-0.7, 1.4, 1.4, '#ffe98a');
+      }
+      cx.globalAlpha = 1;
+    }
+    // rooftop silhouette + rising lanterns
+    R(0,150,LW,30,'#0c0a18');
+    for (let i=0;i<6;i++) drawRoof(10+i*54, 142+((i%2)*4), 34);
+    for (let i=0;i<4;i++){
+      const ly2 = 170 - ((this.t*7 + i*40) % 160);
+      drawLantern(30+i*84 + Math.sin(this.t+i)*4, ly2, 0.8, true, this.t);
+    }
+    // the whole cast parades across with the dragon
+    const px2 = ((this.t*24) % (LW+260)) - 130;
+    drawLong(px2, 128 + Math.sin(this.t*2)*3, this.t, false);
+    const cast = ['elder','hua','bo','mei','yu','wen','zhu','fang'];
+    cast.forEach((id,i)=>{
+      const cxp = px2 - 44 - i*20;
+      if (cxp > -20 && cxp < LW+20)
+        drawPerson(cxp, 146, {...NPCS[id].look, dir:'right', walk:true}, this.t+i);
+    });
+    drawPerson(px2 - 44 - cast.length*20, 146, {...playerLook(), dir:'right', walk:true}, this.t);
     drawParts(0,0);
-    Tsh('THE STORIES ARE LIT', LW/2, 62, 10, '#f2b632','center');
-    T('You collected '+G.scrolls.length+' of '+SCROLL_ORDER.length+' Wisdom Scrolls', LW/2, 82, 6, '#f4e8d0','center');
-    T('FESTIVAL QUEST', LW/2, 100, 6.4, '#e03c28','center');
-    T('A 7th Grade Family Heritage Project', LW/2, 111, 5.4, '#cfc0a8','center');
-    T('about the festivals of Chinese culture', LW/2, 120, 5.4, '#cfc0a8','center');
-    T('Story facts: see Research Sources in the Journal', LW/2, 134, 5, '#9a8c78','center');
-    T('CLICK — open the journal  ·  X — title screen', LW/2, 156, 5.4, '#8a7c6a','center');
+    // the rolling credits
+    const lines = [
+      ['THE STORIES ARE LIT', 10, '#f2b632'],
+      ['', 6, ''],
+      [G.name + ' — Keeper of Stories', 7, '#ffe9b0'],
+      ['Wisdom Scrolls: ' + G.scrolls.length + ' / ' + SCROLL_ORDER.length, 6, '#f4e8d0'],
+      ['', 6, ''],
+      ['FESTIVAL QUEST', 7.4, '#e03c28'],
+      ['a Family Heritage Project', 5.4, '#cfc0a8'],
+      ['', 6, ''],
+      ['starring', 5, '#8a7c6a'],
+      ['Lóng · Nǎi Nai · Elder Shan · Auntie Hua', 5.6, '#f4e8d0'],
+      ['Uncle Bo · Mei · Captain Yu · Old Wen', 5.6, '#f4e8d0'],
+      ['Granny Zhu · Baker Fang · and NIAN', 5.6, '#f4e8d0'],
+      ['', 6, ''],
+      ['three festivals, one family', 5, '#8a7c6a'],
+      ['Lunar New Year 春节', 6, '#ffe9b0'],
+      ['Dragon Boat Festival 端午节', 6, '#ffe9b0'],
+      ['Mid-Autumn Festival 中秋节', 6, '#ffe9b0'],
+      ['', 6, ''],
+      ['music: Mo Li Hua (Jasmine Flower)', 5, '#cfc0a8'],
+      ['a very old, very beautiful folk song', 5, '#8a7c6a'],
+      ['', 6, ''],
+      ['research sources: press CLICK for the Journal', 5, '#cfc0a8'],
+      ['', 6, ''],
+      ['now go tell YOUR story at dinner.', 6.4, '#7ce87c'],
+      ['再见 · see you at the next festival!', 5.6, '#f2b632'],
+    ];
+    let yy = 168 - this.roll;
+    for (const [txt, sz, col] of lines){
+      if (txt && yy > -10 && yy < 136) Tsh(txt, LW/2, yy, sz, col, 'center');
+      yy += sz*1.9;
+    }
+    const total = lines.reduce((a,l)=>a+l[1]*1.9, 0);
+    if (168 - this.roll + total < 100) this.roll = 168 + total - 100;
+    T('CLICK — journal  ·  X — title screen', LW/2, 170, 5, '#8a7c6a','center');
     drawFade();
   }
 };
@@ -6701,6 +6985,7 @@ function makeNianBattle(){
     dashT:0, dashCd:0, inv:0, throwCd:0, hearts:5, maxHearts:5, ghosts:[],
     // nian
     nx:90, ny:104, nvx:0, nvy:0, hp:72, maxHp:72, hurtT:0, invuln:false,
+    face:1, flipCd:0,
     atk:null, atkCd:1.4, spiralA:0,
     // stuff
     dumps:[], embers:[], waves:[], imps:[], drops:[],
@@ -6845,6 +7130,12 @@ function makeNianBattle(){
       st.drops = st.drops.filter(dp=> !dp.got && dp.t < 14);
 
       /* ---------------- Nian ---------------- */
+      // he TURNS: face the player, or the way he is charging
+      st.flipCd = Math.max(0, st.flipCd - dt);
+      let wantF = st.px >= st.nx ? 1 : -1;
+      if (st.atk && st.atk.kind==='charge' && st.atk.ph==='go' && Math.abs(st.nvx) > 8)
+        wantF = st.nvx >= 0 ? 1 : -1;
+      if (wantF !== st.face && st.flipCd <= 0){ st.face = wantF; st.flipCd = 0.35; }
       if (!st.atk){
         // stalk the player slowly
         const a = Math.atan2(st.py-8-st.ny, st.px-st.nx);
@@ -6858,6 +7149,13 @@ function makeNianBattle(){
         const A = st.atk; A.t += dt;
         if (A.ph==='warn'){
           if (A.kind==='charge'){ A.tx = st.px; A.ty = st.py; }
+          if (A.kind==='aimed' && Math.random() < dt*22){       // the inhale, drawn inward
+            const ia = rnd(Math.PI*2), ir = rnd(14, 24);
+            const mx = st.nx + st.face*15, my = st.ny - 23;
+            spawnPart({ x:mx+Math.cos(ia)*ir, y:my+Math.sin(ia)*ir,
+                        vx:-Math.cos(ia)*ir*3.2, vy:-Math.sin(ia)*ir*3.2,
+                        g:0, life:0.3, t:0, c:pick(['#ff7030','#ffb050']), sz:1.4 });
+          }
           if (A.t >= A.warn){
             A.ph='go'; A.t=0;
             const ph = phaseOf();
@@ -6867,10 +7165,9 @@ function makeNianBattle(){
               for (let i=0;i<n;i++) ember(st.nx, st.ny-18, off + i/n*Math.PI*2, 40+ph*4);
                       emberSfx(); st.atk=null; st.atkCd = ph===3?1.6:1.9;
             } else if (A.kind==='aimed'){
-              const base = Math.atan2(st.py-8-(st.ny-18), st.px-st.nx);
-              const n = ph===1?3:4;
-              for (let i=0;i<n;i++) ember(st.nx, st.ny-18, base + (i-(n-1)/2)*0.22, 68);
-              emberSfx(); st.atk=null; st.atkCd = ph===3?1.45:1.7;
+              // FIRE BREATH: a tracking stream from the open mouth
+              A.ph='breathe'; A.t=0; A.shot=0; A.total = ph===1?4:6; A.next=0;
+              roarSfx();
             } else if (A.kind==='stomp'){
               st.waves.push({x:st.nx, y:st.ny-14, r:8});
               mdrum(0,0.6); st.shake=0.5; st.atk=null; st.atkCd = ph===3?1.8:1.9;
@@ -6878,6 +7175,22 @@ function makeNianBattle(){
               for (let i=0;i<3;i++) st.imps.push({ x:st.nx+rnd(-16,16), y:st.ny-18+rnd(-12,12), hp:2, dead:false });
               roarSfx(); st.atk=null; st.atkCd = 1.9;
             }
+          }
+        } else if (A.ph==='breathe'){
+          A.next -= dt;
+          const mx = st.nx + st.face*15, my = st.ny - 23;
+          if (A.next <= 0 && A.shot < A.total){
+            A.next = 0.13; A.shot++;
+            const base = Math.atan2(st.py-8-my, st.px-mx);
+            ember(mx, my, base + rnd(-0.08, 0.08), 74);
+            emberSfx();
+            st.nvx -= st.face*26*0.2;                       // recoil
+            for (let k2=0;k2<3;k2++)
+              spawnPart({ x:mx, y:my, vx:Math.cos(base)*rnd(30,70)+rnd(-10,10), vy:Math.sin(base)*rnd(30,70)+rnd(-10,10),
+                          g:-14, life:rnd(0.25,0.5), t:0, c:pick(['#ff7030','#ffe98a','#ff5024']), sz:rnd(1.4,2.4) });
+          }
+          if (A.shot >= A.total && A.next <= -0.15){
+            st.atk = null; st.atkCd = phaseOf()===3?1.45:1.7;
           }
         } else if (A.kind==='charge'){
           if (A.ph==='go'){
@@ -6973,7 +7286,42 @@ function makeNianBattle(){
       const items = [];
       for (const im of st.imps) items.push({y:im.y, f:()=> drawNianCub(im.x, im.y, st.t, im.hp<2)});
       items.push({y:st.ny, f:()=>{
-        drawNian(st.nx, st.ny, st.t);
+        const A2 = st.atk;
+        const pose = { face: st.face };
+        if (A2){
+          const k = Math.min(1, A2.t/(A2.warn||0.6));
+          if (A2.ph==='warn'){
+            if (A2.kind==='aimed'){ pose.rear = k; pose.mouth = 0.2+k*0.6; }
+            else if (A2.kind==='charge'){ pose.rear = k*0.8; pose.mouth = 0.3; }
+            else if (A2.kind==='stomp'){ pose.rear = k*0.6; }
+            else if (A2.kind==='summon'){ pose.mouth = k; pose.rear = k*0.4; }
+            else if (A2.kind==='ring'){ pose.mouth = k*0.8; }
+          }
+          else if (A2.ph==='breathe'){ pose.mouth = 1; pose.rear = 0.15; }
+          else if (A2.kind==='charge' && A2.ph==='go'){ pose.lunge = 1; pose.mouth = 0.4; }
+          else if (A2.kind==='rage'){ pose.mouth = 1; pose.rear = 0.5; }
+          else if (A2.kind==='spiral'){ pose.mouth = 0.55; }
+        }
+        const shk = st.hurtT>0 ? Math.round(Math.sin(st.t*60)*1.5) : 0;
+        drawNian(st.nx + shk, st.ny, st.t, pose);
+        // the breath itself: a flickering cone of flame from the mouth
+        if (A2 && A2.ph==='breathe'){
+          const mx = st.nx + st.face*15, my = st.ny - 23;
+          const a = Math.atan2(st.py-8-my, st.px-mx);
+          const L = 26 + Math.sin(st.t*34)*4;
+          const ca = Math.cos(a), sa = Math.sin(a), pa = -sa, pb = ca;
+          const tx2 = mx + ca*L, ty2 = my + sa*L;
+          tri(mx, my, tx2 + pa*10, ty2 + pb*10, tx2 - pa*10, ty2 - pb*10, '#a82810');
+          tri(mx, my, tx2 - ca*4 + pa*7, ty2 - sa*4 + pb*7, tx2 - ca*4 - pa*7, ty2 - sa*4 - pb*7, '#ff7030');
+          tri(mx, my, tx2 - ca*10 + pa*3.6, ty2 - sa*10 + pb*3.6, tx2 - ca*10 - pa*3.6, ty2 - sa*10 - pb*3.6, '#ffe98a');
+          glow(mx + ca*12, my + sa*12, 16, '#ff7030', 0.3);
+        }
+        // charge speed-streaks
+        if (A2 && A2.kind==='charge' && A2.ph==='go'){
+          cx.globalAlpha = 0.4;
+          for (let k2=1;k2<4;k2++) R(st.nx - st.face*(10+k2*7), st.ny - 16 - k2*2, 6, 2, '#7cc93e');
+          cx.globalAlpha = 1;
+        }
         if (st.hurtT>0) glow(st.nx+2, st.ny-20, 30, '#ffffff', 0.4*(st.hurtT/0.25));
         if (st.invuln) glow(st.nx+2, st.ny-20, 34, '#ff3820', 0.22);
       }});
@@ -6997,7 +7345,11 @@ function makeNianBattle(){
       }
       // projectiles on top
       for (const e of st.embers){
-        circle(e.x, e.y, e.r, '#ff7030'); circle(e.x-0.8, e.y-0.8, e.r*0.5, '#ffe98a');
+        const el = Math.hypot(e.vx, e.vy) || 1;
+        const bx2 = e.x - e.vx/el*e.r*1.7, by2 = e.y - e.vy/el*e.r*1.7;
+        circle(bx2, by2, e.r*0.62, '#a82810');
+        circle(e.x, e.y, e.r + (Math.sin(st.t*40 + e.x)>0?0.5:0), '#ff7030');
+        circle(e.x-0.8, e.y-0.8, e.r*0.52, '#ffe98a');
         glow(e.x, e.y, e.r*2.6, '#ff7030', 0.22);
       }
       for (const d of st.dumps) drawDumpling(d.x, d.y, 1);
@@ -7125,17 +7477,24 @@ function drawToad(x, y, t, hurt, crouch){
   R(x-6, y-9.4*sq, 12, 1.6, '#3e5220');
   if (hurt>0) glow(x, y-6, 18, '#ffffff', 0.45*hurt);
 }
+/* squares marched along a line — keeps everything on the pixel grid */
+function pixLine(x1, y1, x2, y2, sz, color){
+  const d = Math.hypot(x2-x1, y2-y1), n = Math.max(2, Math.round(d/1.3));
+  for (let i=0;i<=n;i++) R(x1 + (x2-x1)*i/n - sz/2, y1 + (y2-y1)*i/n - sz/2, sz, sz, color);
+}
 function drawSpider(x, y, t, hurt){
   const INKp='#1a1016', S1='#2a2438', S2='#463c5c';
   ell(x, y+3, 9, 2.6, 'rgba(0,0,0,0.25)');
-  for (let i=0;i<4;i++){                                     // eight legs
-    const k = Math.sin(t*11 + i*1.2)*1.6;
+  for (let i=0;i<4;i++){                                     // eight legs, alternating gait
+    const k = Math.sin(t*11 + i*1.55)*1.8;                   // knee lift
+    const step = Math.cos(t*11 + i*1.55)*1.3;                // foot reach
     for (const s of [-1,1]){
       const bx = x + s*4, by = y-1;
-      const mx = bx + s*(6+i*0.6), my = by - 4 + i*1.6 + k;
-      const ex = bx + s*(10+i), ey = by + 2 + i*1.4 - k;
-      cx.strokeStyle = INKp; cx.lineWidth = P*1.2;
-      cx.beginPath(); cx.moveTo(bx*P, by*P); cx.lineTo(mx*P, my*P); cx.lineTo(ex*P, ey*P); cx.stroke();
+      const mx = bx + s*(6+i*0.6), my = by - 4 + i*1.6 + k*s;
+      const ex = bx + s*(10+i) + step*s, ey = by + 2.6 + i*1.4 - k*s;
+      pixLine(bx, by, mx, my, 1.4, INKp);
+      pixLine(mx, my, ex, ey, 1.4, INKp);
+      R(ex-0.9, ey-0.9, 1.8, 1.8, '#463c5c');               // little foot
     }
   }
   ell(x-1, y, 7, 6, INKp); ell(x-1, y, 6, 5, S1);
@@ -7210,7 +7569,7 @@ function makePoisonBattle(onDone){
     mode:'intro', t:0, evT:0, fightT:0, wave:0,
     px:250, py:120, dir:'left', moving:false,
     dashT:0, dashCd:0, inv:0, swingT:0, swingCd:0, swingDir:'right',
-    hearts:5, maxHearts:5, charge:0, ghosts:[], deaths:0,
+    hearts:5, maxHearts:5, charge:0, ghosts:[], deaths:0, sprigs:[],
     foes:[], venom:[], rings:[], webs:[], king:null,
     msg:'', msgT:0, msgC:'#ffe9b0', shake:0, danger:false, fledT:-1,
   };
@@ -7269,7 +7628,7 @@ function makePoisonBattle(onDone){
       if (st.mode==='intro'){ if (st.evT>2.2 || just.a){ st.mode='fight'; nextWave(); } return; }
       if (st.mode==='lose'){
         if ((just.a || just.click) && st.evT>0.9){
-          st.hearts=st.maxHearts; st.wave=0; st.foes=[]; st.venom=[]; st.rings=[]; st.webs=[];
+          st.hearts=st.maxHearts; st.wave=0; st.foes=[]; st.venom=[]; st.rings=[]; st.webs=[]; st.sprigs=[];
           st.king=null; st.px=250; st.py=120; st.charge=0; st.mode='fight'; st.evT=0; st.fightT=0;
           nextWave();
         }
@@ -7420,6 +7779,7 @@ function makePoisonBattle(onDone){
           f.dead = true;
           burst(f.x,f.y,['#6ab04c','#a8e08a','#f2b632'],22,70);
           dustPoof(f.x,f.y,true);
+          st.sprigs.push({ x:f.x, y:f.y, t:0 });          // it leaves a sprig behind
         }
       }
       const alive = st.foes.filter(f=>!f.dead);
@@ -7510,6 +7870,16 @@ function makePoisonBattle(onDone){
       }
       st.rings = st.rings.filter(r=>!r.gone);
       for (const w of st.webs) w.t += dt;
+      for (const sp2 of st.sprigs){
+        sp2.t += dt;
+        if (!sp2.got && dist(sp2.x, sp2.y, st.px, st.py-8) < 13){
+          sp2.got = true; SFX.sparkle();
+          if (st.hearts < st.maxHearts){ st.hearts++; say2('a fresh sprig! +1', '#7ce87c'); }
+          else { st.charge = Math.min(100, st.charge + 30); say2('sachet charged!', '#ffe9b0'); }
+          burst(sp2.x, sp2.y, ['#7ce87c','#a8e08a'], 12, 40);
+        }
+      }
+      st.sprigs = st.sprigs.filter(sp2 => !sp2.got && sp2.t < 9);
       st.webs = st.webs.filter(w=> w.t < 9);
 
       st.danger = st.venom.some(v=>dist(v.x,v.y,st.px,st.py-8)<34)
@@ -7535,23 +7905,22 @@ function makePoisonBattle(onDone){
         R(bx-0.8, PR.y0-8, 1.6, 7, '#7a5a38');
         circle(bx, PR.y0-1, 2.6, '#2e7a3e'); circle(bx-0.8, PR.y0-1.8, 1.4, '#6ab04c');
       }
-      // webs
+      // webs — pixel spokes and rings
       for (const w of st.webs){
         const a = clamp(1 - w.t/9, 0, 1);
-        cx.globalAlpha = a*0.75;
+        cx.globalAlpha = a*0.8;
         for (let i=0;i<8;i++){
-          const an = i/8*6.283;
-          cx.strokeStyle='#d8dce8'; cx.lineWidth=P*0.8;
-          cx.beginPath(); cx.moveTo(w.x*P,w.y*P);
-          cx.lineTo((w.x+Math.cos(an)*13)*P,(w.y+Math.sin(an)*13)*P); cx.stroke();
+          const an = i/8*6.283 + 0.39;
+          pixLine(w.x, w.y, w.x+Math.cos(an)*13, w.y+Math.sin(an)*13, 1, '#d8dce8');
         }
-        for (let r=5;r<=12;r+=4){
-          cx.beginPath();
-          for (let i=0;i<=8;i++){ const an=i/8*6.283;
-            const px2=(w.x+Math.cos(an)*r)*P, py2=(w.y+Math.sin(an)*r)*P;
-            i?cx.lineTo(px2,py2):cx.moveTo(px2,py2); }
-          cx.stroke();
+        for (let r=5;r<=12;r+=3.5){
+          for (let i=0;i<8;i++){
+            const an1 = i/8*6.283 + 0.39, an2 = (i+1)/8*6.283 + 0.39;
+            pixLine(w.x+Math.cos(an1)*r, w.y+Math.sin(an1)*r,
+                    w.x+Math.cos(an2)*r, w.y+Math.sin(an2)*r, 1, '#b8c0d4');
+          }
         }
+        R(w.x-1, w.y-1, 2, 2, '#eef2f8');
         cx.globalAlpha = 1;
       }
       // shock rings
@@ -7589,7 +7958,41 @@ function makePoisonBattle(onDone){
           }});
         }
       }
-      if (st.king) items.push({y:st.king.y, f:()=> drawPoisonKing(st.king.x, st.king.y, st.t, st.king.hurtT, st.king.hp<=st.king.maxHp/2)});
+      for (const sp2 of st.sprigs){
+        const bob = Math.sin(st.t*4 + sp2.x)*1.4;
+        const fade = sp2.t > 7 && Math.sin(st.t*12) > 0;
+        if (!fade) items.push({y:sp2.y, f:()=>{ glow(sp2.x, sp2.y-4+bob, 7, '#7ce87c', 0.18);
+                                                drawMugwortPip(sp2.x, sp2.y-6+bob, true, st.t); }});
+      }
+      if (st.king) items.push({y:st.king.y, f:()=>{
+        const k = st.king;
+        drawPoisonKing(k.x, k.y, st.t, k.hurtT, k.hp<=k.maxHp/2);
+        if (k.atk && k.atk.ph==='warn'){
+          const bl = Math.sin(st.t*16) > 0;
+          // the tell: a flashing mark over his head
+          T('!', k.x, k.y-56, 10, bl ? '#ffe98a' : '#ff3820', 'center');
+          cx.globalAlpha = 0.55 + (bl ? 0.2 : 0);
+          if (k.atk.kind==='charge'){
+            for (let i2=2;i2<12;i2++){
+              const fx = k.x + (k.atk.tx-k.x)*i2/12, fy = (k.y-20) + (k.atk.ty-8-(k.y-20))*i2/12;
+              R(fx-1.5, fy-1.5, 3, 3, '#ff3820');
+            }
+          } else if (k.atk.kind==='fan'){
+            const fa = Math.atan2(st.py-8-(k.y-20), st.px-k.x);
+            for (const off2 of [-0.3, 0, 0.3])
+              pixLine(k.x+Math.cos(fa+off2)*14, k.y-20+Math.sin(fa+off2)*14,
+                      k.x+Math.cos(fa+off2)*34, k.y-20+Math.sin(fa+off2)*34, 1.4, '#ff7030');
+          } else if (k.atk.kind==='ring'){
+            const rr = 16 + Math.sin(st.t*10)*3;
+            for (let i2=0;i2<14;i2++){ const an2 = i2/14*6.283;
+              R(k.x+Math.cos(an2)*rr-1, k.y-20+Math.sin(an2)*rr-1, 2, 2, '#ff7030'); }
+          } else if (k.atk.kind==='summon'){
+            for (let i2=0;i2<3;i2++){ const an2 = st.t*4 + i2*2.1;
+              R(k.x+Math.cos(an2)*18-1, k.y-20+Math.sin(an2)*10-1, 2, 2, '#7ad24a'); }
+          }
+          cx.globalAlpha = 1;
+        }
+      }});
       items.push({y:st.py, f:()=>{
         for (const g of st.ghosts){
           cx.globalAlpha=0.3*(1-g.t/0.25);
