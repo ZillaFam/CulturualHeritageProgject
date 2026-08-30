@@ -2796,6 +2796,7 @@ const world = {
     updateFade(dt);
     updateParts(dt);
     if (toast) {} // toast timing handled in render
+    npcWalksTick(dt);
     // a new objective pops mid-screen (queued until any dialogue closes)
     const qkey = G.ch + ':' + G.step;
     if (this._qkey !== qkey){
@@ -2906,7 +2907,7 @@ const world = {
       const n = NPCS[id], p = npcPos(id);
       if (!p) continue;
       items.push({y:p[1], f:()=>{
-        const look = {...n.look, dir:p[2]||'down', walk:false};
+        const look = {...n.look, dir:p[2]||'down', walk:!!p[3]};
         drawPerson(p[0]-cam, p[1]-camY, look, G.time);
       }});
     }
@@ -2989,6 +2990,32 @@ const world = {
 };
 function npcMoved(id, x, y, dir){ NPC_OVERRIDE[id] = [x,y,dir]; }
 const NPC_OVERRIDE = {};
+/* send an NPC walking: down to the plaza band first, then to the seat */
+const NPC_WALKS = {};
+function npcWalk(id, tx, ty, dir, delay){
+  const p = npcPos(id);
+  NPC_OVERRIDE[id] = [p[0], p[1], p[2] || 'down'];
+  NPC_WALKS[id] = { path: [[p[0], Math.max(p[1], 200)], [tx, ty]], dir,
+                    spd: 40 + Math.random()*14, delay: delay || 0 };
+}
+function npcWalksTick(dt){
+  for (const id in NPC_WALKS){
+    const w = NPC_WALKS[id], o = NPC_OVERRIDE[id];
+    if (w.delay > 0){ w.delay -= dt; continue; }
+    const t2 = w.path[0];
+    const dx = t2[0] - o[0], dy = t2[1] - o[1];
+    const d = Math.hypot(dx, dy);
+    if (d < 2){
+      w.path.shift();
+      if (!w.path.length){ o[0] = t2[0]; o[1] = t2[1]; o[2] = w.dir; o[3] = false; delete NPC_WALKS[id]; }
+      continue;
+    }
+    const step = Math.min(d, w.spd*dt);
+    o[0] += dx/d*step; o[1] += dy/d*step;
+    o[2] = Math.abs(dx) > Math.abs(dy) ? (dx>0?'right':'left') : (dy>0?'down':'up');
+    o[3] = true;                                   // mid-stride
+  }
+}
 function npcPos(id){
   if (NPC_OVERRIDE[id]) return NPC_OVERRIDE[id];
   const n = NPCS[id];
@@ -6651,7 +6678,7 @@ function chapterTick(dt){
       G.flags.feastGo = true;
       ['elder','mei','hua','bo','zhu','fang','yu','wen'].forEach((id,i)=>{
         const spots = [[468,198],[448,232],[500,198],[524,232],[438,216],[540,216],[488,236],[452,216]];
-        npcMoved(id, spots[i][0], spots[i][1], 'down');
+        npcWalk(id, spots[i][0], spots[i][1], 'down', i*0.5);   // they stroll over, one after another
       });
       say([
         {who:'Lóng', port:LONG_PORTRAIT, text:"LOOK at the village glow! Everyone's heading to the plaza with food and stories. Go — join your feast."},
