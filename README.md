@@ -81,7 +81,8 @@ grandmothers warble, Mei chirps high and quick.
 
 ## Credits
 
-- Family traditions, heritage & creative direction: the student & their family
+- **Created by Micah Wang** — game design, art direction, story, playtesting,
+  and the family traditions the whole game is built on
 - Programming help: Claude (AI assistant) — used as the "game engine," the way
   Scratch would be
 - All festival facts were checked against the research sources in `SOURCES.md`
