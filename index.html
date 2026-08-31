@@ -6115,7 +6115,8 @@ const homeScene = {
       {who:'Nǎi Nai', port:NAINAI_LOOK, text:"That is how a family keeps its lanterns lit."},
     ], ()=>{
       giveScroll('legacy');
-      fadeOut(()=> swapScene(creditsScene), 0.8);
+      SFX.gong();
+      fadeOut(()=> swapScene(creditsScene), 0.7);
     });
   },
   render(){
@@ -6359,10 +6360,10 @@ function makeJournal(){
 /* ---------- credits ---------- */
 const creditsScene = {
   t:0, fw:[], roll:0,
-  enter(){ this.t=0; this.roll=0; this.fw=[]; playMusic(3); G.ch=4; saveGame(); },
+  enter(){ this.t=0; this.roll=46; this.fw=[]; playMusic(3); G.ch=4; saveGame(); fadeIn(0.9); },
   update(dt){
     this.t+=dt; updateFade(dt); updateParts(dt);
-    this.roll += dt*9;
+    this.roll += dt*10;
     // fireworks
     if (Math.random() < dt*1.2){
       const fx2 = rnd(40,280), fy2 = rnd(24,70);
