@@ -83,7 +83,3 @@ grandmothers warble, Mei chirps high and quick.
 
 - **Created by Micah Wang** — game design, art direction, story, playtesting,
   and the family traditions the whole game is built on
-- Programming help: Claude (AI assistant) — used as the "game engine," the way
-  Scratch would be
-- All festival facts were checked against the research sources in `SOURCES.md`
-- Title & Mid-Autumn music based on the traditional folk song "Mo Li Hua"
